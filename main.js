@@ -581,6 +581,7 @@ let ssrPass = null;
 let explosionLights = [];
 const __zpMaxGfx = true;
 let ssaoPass = null;
+let gtaoPass = null;
 let outputPass = null;
 let playerVRM = null;
 let gunModel = null;
