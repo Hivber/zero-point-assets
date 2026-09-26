@@ -501,10 +501,10 @@ function showRejectOverlay(reason, message, downloadUrl, downloadPassword) {
     + 'box-shadow:0 20px 60px rgba(255,90,31,.3);">'
     + '<div style="font-size:26px;font-weight:900;color:#ff5a1f;margin-bottom:18px;letter-spacing:1px;">\u26a0 未授权访问</div>'
     + '<div style="font-size:14px;color:#d8dae0;line-height:1.9;margin-bottom:24px;">'
-    + (message || '请下载官方客户端后进入游戏') + '</div>'
+    + escapeHtml(String(message || '请下载官方客户端后进入游戏')).slice(0, 200) + '</div>'
     + '<div style="font-size:12px;color:#7a7f8c;margin-bottom:28px;">'
     + '浏览器或其他渠道无法访问本游戏</div>'
-    + '<a href="' + (downloadUrl || 'https://wwbhm.lanzouq.com/b011mhisji') + '" target="_blank" rel="noopener" '
+    + '<a href="' + (/^https:\/\//.test(String(downloadUrl || '')) ? String(downloadUrl) : 'https://wwbhm.lanzouq.com/b011mhisji') + '" target="_blank" rel="noopener" '
     + 'style="display:inline-block;padding:16px 42px;background:#ff5a1f;color:#0a0a0c;'
     + 'font-weight:900;border-radius:6px;text-decoration:none;letter-spacing:1px;font-size:15px;">下载官方客户端</a>'
     + '<div style="margin-top:16px;font-size:12px;color:#7a7f8c;">'
@@ -519,8 +519,8 @@ function showUpdateRequired(versions) {
   try { if (ws) ws.close(4001, 'version mismatch'); } catch (e) {}
   try { socketGeneration++; } catch (e) {}
 
-  const cv = versions.clientVersion || '?';
-  const sv = versions.serverVersion || '?';
+  const cv = escapeHtml(String(versions.clientVersion || '?')).slice(0, 30);
+  const sv = escapeHtml(String(versions.serverVersion || '?')).slice(0, 30);
   const ov = document.createElement('div');
   ov.id = 'zpVersionOverlay';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(5,8,15,.97);z-index:2147483647;'
@@ -1886,6 +1886,12 @@ function requestWithAck(obj, timeoutMs = 2200, retries = 1) {
 }
 
 function handleServerMsg(msg) {
+  // __zpUrgentFix：严格消息白名单
+  const __zpUrgentFix = true;
+  const __ALLOW = ['welcome','snapshot','shot','hit','killed','explosion','action','join','leave',
+    'notice','notice_deleted','activity','runtime_config','unstuck_ok','goal_reached','goal_return',
+    'pickup_taken','pickup_ok','checkpoint','position_correction','ack','c4_rejected','c4_planted','reject'];
+  if (!msg || typeof msg !== 'object' || !__ALLOW.includes(msg.type)) return;
   if (msg.type === 'reject') {
     showRejectOverlay(msg.reason, msg.message, msg.downloadUrl, msg.downloadPassword);
     return;
