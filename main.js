@@ -5796,7 +5796,7 @@ function setupUI() {
   setMenuNetStatus(maintenanceMode ? '服务器维护中' + (maintenanceMessage ? '：' + maintenanceMessage : '') : '连接中…');
   updateNoticeBadge();
   document.getElementById('startBtn').addEventListener('click', () => {
-    if (maintenanceMode || !protocolCompatible || !versionCompatible) return;
+    if (maintenanceMode) return;
     ensureAudio();
     startGame();
   });
