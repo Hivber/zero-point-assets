@@ -1102,6 +1102,7 @@ const state = {
   c4PlantPending: false,
   c4PlantRequestId: null,
   crouching: false,
+  orbit: null,   // __zpOrbit: { phase, t, duration, startYaw, radius }
 };
 
 let currentGameplay = { type: 'ffa_plant', spawn: { weapon: 'gun', c4: true } };
@@ -3830,6 +3831,11 @@ function resolveVertical(prevY) {
 }
 
 function updatePlayer(dt) {
+  if (state.orbit) {
+    // 观赏模式下禁止移动
+    player.moving = false;
+    return;
+  }
   if (state.alive && player.pos.y < -8) {
     state.alive = false;
     updateViewModelVisible();
@@ -3914,7 +3920,100 @@ function getCameraObstacleDistance(start, end, padding = 0.14) {
   return nearest;
 }
 
+// ===== 观赏视角（环绕一圈） =====
+const __zpOrbit = true;
+const ORBIT_OUT_MS = 600;      // 拉远时长
+const ORBIT_SPIN_MS = 2500;    // 转圈时长
+const ORBIT_IN_MS = 600;       // 拉回时长
+const ORBIT_RADIUS = 4.0;
+const ORBIT_HEIGHT = 1.6;
+
+function startOrbit() {
+  if (!playerVRM || !state.alive || !state.playing) return;
+  if (state.orbit) return;
+  state.orbit = {
+    phase: 'out',
+    t: 0,
+    startYaw: player.yaw,
+    radius: ORBIT_RADIUS,
+    savedViewMode: state.viewMode,
+  };
+  // 转圈期间强制第三人称渲染，避免第一人称裁剪
+  state.thirdPerson = true;
+  state.viewMode = 1;
+  updateViewModelVisible();
+}
+
+function _easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+function _easeOut(t) { return 1 - Math.pow(1-t, 3); }
+
+function updateOrbitCamera(dt) {
+  const o = state.orbit;
+  if (!o) return false;
+
+  o.t += dt * 1000;
+  const cx = player.pos.x;
+  const cy = player.pos.y + ORBIT_HEIGHT;
+  const cz = player.pos.z;
+
+  if (o.phase === 'out') {
+    const p = Math.min(1, o.t / ORBIT_OUT_MS);
+    const e = _easeOut(p);
+    const r = o.radius * e;
+    const yaw = o.startYaw;
+    const camX = cx - Math.sin(yaw) * r;
+    const camZ = cz - Math.cos(yaw) * r;
+    camera.position.set(camX, cy + 0.3 * (1 - e), camZ);
+    camera.lookAt(cx, cy - 0.2, cz);
+    if (p >= 1) { o.phase = 'spin'; o.t = 0; }
+    return true;
+  }
+
+  if (o.phase === 'spin') {
+    const p = Math.min(1, o.t / ORBIT_SPIN_MS);
+    const e = _easeInOut(p);
+    const yaw = o.startYaw + e * Math.PI * 2;
+    const camX = cx - Math.sin(yaw) * o.radius;
+    const camZ = cz - Math.cos(yaw) * o.radius;
+    const camY = cy + 0.4 + Math.sin(p * Math.PI) * 0.6;
+    camera.position.set(camX, camY, camZ);
+    camera.lookAt(cx, cy - 0.2, cz);
+    if (p >= 1) { o.phase = 'in'; o.t = 0; }
+    return true;
+  }
+
+  if (o.phase === 'in') {
+    const p = Math.min(1, o.t / ORBIT_IN_MS);
+    const e = _easeOut(p);
+    const endYaw = o.startYaw + Math.PI * 2;
+    const r = o.radius * (1 - e);
+    const camX = cx - Math.sin(endYaw) * r;
+    const camZ = cz - Math.cos(endYaw) * r;
+    camera.position.set(camX, cy + 0.3 * (1 - e) + 1.7 * e * 0 + 0.0, camZ);
+    // 平滑拉回眼睛位置
+    const eyeY = player.pos.y + (state.crouching ? 1.35 : 1.7);
+    camera.position.x = camera.position.x * (1 - e) + player.pos.x * e;
+    camera.position.z = camera.position.z * (1 - e) + player.pos.z * e;
+    camera.position.y = camera.position.y * (1 - e) + eyeY * e;
+    camera.lookAt(cx, cy - 0.2, cz);
+    if (p >= 1) {
+      state.orbit = null;
+      state.viewMode = o.savedViewMode;
+      state.thirdPerson = state.viewMode !== 0;
+      updateViewModelVisible();
+      updateViewButton();
+    }
+    return true;
+  }
+
+  return false;
+}
+
 function updateCamera() {
+  if (state.orbit) {
+    // orbit 相机会在 loop 里独立处理，这里不覆盖
+    return;
+  }
   if (state.viewMode === 1 || state.viewMode === 2) {
     const yaw = player.yaw;
     const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -4578,6 +4677,7 @@ function predictLocalHit(origin, dir) {
 }
 
 function playerShoot() {
+  if (state.orbit) return;
   if (!state.playing || !state.alive) return;
   if (state.reloading) return;
   if (state.shootCd > 0) return;
@@ -5558,6 +5658,29 @@ async function refreshRuntimeData() {
 
 function setupUI() {
   mobileHudInit();
+
+  // __zpOrbit：观赏按钮
+  try {
+    if (!document.getElementById('zpOrbitBtn')) {
+      const b = document.createElement('div');
+      b.id = 'zpOrbitBtn';
+      b.title = '观赏视角';
+      b.textContent = '🎬';
+      b.style.cssText = 'position:fixed;top:10px;right:70px;width:44px;height:44px;'
+        + 'display:flex;align-items:center;justify-content:center;'
+        + 'background:rgba(18,24,30,.55);border:1.5px solid rgba(235,244,248,.55);'
+        + 'border-radius:50%;z-index:9998;cursor:pointer;font-size:20px;'
+        + 'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);'
+        + 'user-select:none;-webkit-tap-highlight-color:transparent;';
+      b.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        startOrbit();
+      });
+      document.body.appendChild(b);
+    }
+  } catch (e) { console.warn('[ORBIT] 按钮创建失败', e); }
+
   const noticeBtn = document.getElementById('noticeBtn');
   if (noticeBtn) noticeBtn.addEventListener('click', openRuntimePanel);
   const noticeClose = document.getElementById('runtimePanelClose');
@@ -5895,7 +6018,8 @@ function loop() {
       state.reloadProgress = 0;
     }
     updatePlayer(dt);
-    updateCamera();
+    const __orbitActive = updateOrbitCamera(dt);
+    if (!__orbitActive) updateCamera();
     updateWeaponRecoilCF(dt);
 
     if ((mouse.held || touch.fire) && state.shootCd <= 0) {

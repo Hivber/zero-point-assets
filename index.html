@@ -263,7 +263,7 @@
   try {
     window.__ZP_BOOT_STAGE__ = 'module-import';
     show('正在加载前端模块…');
-    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=urgentfix');
+    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=orbit');
     await Promise.race([
       importPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),
