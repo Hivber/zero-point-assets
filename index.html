@@ -202,6 +202,7 @@
   <button id="keybindHudBtn" aria-label="自定义键位">⌨️</button>
   <button id="touchLayoutHudBtn" class="touch-layout-open hidden" aria-label="自定义操作">🎮</button>
   <button id="unstuckBtn" aria-label="自杀脱困">💀</button>
+<button id="orbitBtn" class="hidden touch-layout-item" data-touch-layout-id="orbitBtn" data-touch-layout-label="观赏" aria-label="观赏视角">🎬</button>
 </div>
 
 <canvas id="mobileHudCanvas" aria-hidden="true"></canvas>
@@ -263,7 +264,7 @@
   try {
     window.__ZP_BOOT_STAGE__ = 'module-import';
     show('正在加载前端模块…');
-    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=novercheck');
+    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=orbitinhud');
     await Promise.race([
       importPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),

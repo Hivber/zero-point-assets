@@ -701,7 +701,7 @@ function applyRebind(code) {
 const TOUCH_LAYOUT_STORAGE = 'zeroPoint.touchLayout.v1';
 const TOUCH_LAYOUT_IDS = Object.freeze([
   'joystick', 'fireBtn', 'reloadBtn2', 'jumpBtn', 'crouchBtn',
-  'switchBtn', 'plantBtn', 'viewBtn',
+  'switchBtn', 'plantBtn', 'viewBtn', 'orbitBtn',
 ]);
 const TOUCH_LAYOUT_META = Object.freeze({
   joystick:   { label: '移动摇杆' },
@@ -712,6 +712,7 @@ const TOUCH_LAYOUT_META = Object.freeze({
   switchBtn:  { label: '切换武器' },
   plantBtn:   { label: '安放 C4' },
   viewBtn:    { label: '切换视角' },
+  orbitBtn:   { label: '观赏' },
 });
 let touchLayouts = { portrait: {}, landscape: {} };
 let touchLayoutWorking = null;
@@ -3923,7 +3924,8 @@ function getCameraObstacleDistance(start, end, padding = 0.14) {
 
 // ===== 观赏视角（环绕一圈） =====
 const __zpOrbit = true;
-const ORBIT_OUT_MS = 600;      // 拉远时长
+const ORBIT_OUT_MS = 600;
+const __zpOrbitInHud = true;      // 拉远时长
 const ORBIT_SPIN_MS = 2500;    // 转圈时长
 const ORBIT_IN_MS = 600;       // 拉回时长
 const ORBIT_RADIUS = 4.0;
@@ -4922,6 +4924,7 @@ function roleAt(cx, cy) {
     if (el.closest('#exitBtn')) return 'exitBtn';
     if (el.closest('#gyroBtn')) return 'gyroBtn';
     if (el.closest('#unstuckBtn')) return 'unstuckBtn';
+    if (el.closest('#orbitBtn')) return 'orbitBtn';
     if (el.closest('#joystick')) return 'joy';
     if (el.closest('#touchLayoutHudBtn')) return 'touchLayoutBtn';
     if (el.closest('#keybindPanel')) return 'keybindUI';
@@ -4984,6 +4987,7 @@ function setupTouch() {
       else if (role === 'exitBtn') exitToMenu();
       else if (role === 'gyroBtn') toggleGyro();
       else if (role === 'unstuckBtn') sendUnstuck();
+      else if (role === 'orbitBtn') startOrbit();
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
@@ -5328,6 +5332,27 @@ function mobileHudDrawIcon(id, r, opts = {}) {
     c.strokeRect(cx-s*.48,cy-s*.55,s*.96,s*1.10);
     c.beginPath(); c.moveTo(cx-s*.48,cy-s*.18); c.lineTo(cx+s*.48,cy-s*.18); c.stroke();
     c.beginPath(); c.arc(cx,cy+s*.22,s*.26,0,Math.PI*2); c.stroke();
+  } else if (id === 'orbitBtn') {
+    // 摄像机图标
+    c.beginPath();
+    c.moveTo(cx-s*.85, cy-s*.45);
+    c.lineTo(cx+s*.20, cy-s*.45);
+    c.lineTo(cx+s*.20, cy+s*.45);
+    c.lineTo(cx-s*.85, cy+s*.45);
+    c.closePath();
+    c.stroke();
+    // 镜头前的小三角
+    c.beginPath();
+    c.moveTo(cx+s*.28, cy-s*.18);
+    c.lineTo(cx+s*.85, cy-s*.48);
+    c.lineTo(cx+s*.85, cy+s*.48);
+    c.lineTo(cx+s*.28, cy+s*.18);
+    c.closePath();
+    c.stroke();
+    // 中心镜头
+    c.beginPath();
+    c.arc(cx-s*.32, cy, s*.16, 0, Math.PI*2);
+    c.stroke();
   } else if (id === 'exitBtn') {
     c.beginPath(); c.moveTo(cx-s*.50,cy-s*.50); c.lineTo(cx+s*.50,cy+s*.50); c.moveTo(cx+s*.50,cy-s*.50); c.lineTo(cx-s*.50,cy+s*.50); c.stroke();
   }
@@ -5457,7 +5482,7 @@ function mobileHudDrawSpriteById(id) {
   const kindById = {
     exitBtn:'red', viewBtn:'blue', gyroBtn:'cyan', optBtn:'gold', unstuckBtn:'gold',
     keybindHudBtn:'utility', touchLayoutHudBtn:'gold', fireBtn:'red', reloadBtn2:'blue',
-    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold'
+    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan'
   };
   const labels = {
     exitBtn:'退出',
@@ -5471,7 +5496,8 @@ function mobileHudDrawSpriteById(id) {
     reloadBtn2:'换弹',
     jumpBtn:'跳跃',
     crouchBtn:state.crouching?'起身':'蹲下',
-    switchBtn:state.holding==='c4'?'切枪':'装备'
+    switchBtn:state.holding==='c4'?'切枪':'装备',
+    orbitBtn:'观赏'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -5505,7 +5531,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
@@ -5660,27 +5686,7 @@ async function refreshRuntimeData() {
 function setupUI() {
   mobileHudInit();
 
-  // __zpOrbit：观赏按钮
-  try {
-    if (!document.getElementById('zpOrbitBtn')) {
-      const b = document.createElement('div');
-      b.id = 'zpOrbitBtn';
-      b.title = '观赏视角';
-      b.textContent = '🎬';
-      b.style.cssText = 'position:fixed;top:10px;right:70px;width:44px;height:44px;'
-        + 'display:flex;align-items:center;justify-content:center;'
-        + 'background:rgba(18,24,30,.55);border:1.5px solid rgba(235,244,248,.55);'
-        + 'border-radius:50%;z-index:9998;cursor:pointer;font-size:20px;'
-        + 'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);'
-        + 'user-select:none;-webkit-tap-highlight-color:transparent;';
-      b.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        startOrbit();
-      });
-      document.body.appendChild(b);
-    }
-  } catch (e) { console.warn('[ORBIT] 按钮创建失败', e); }
+  // __zpOrbitInHud：观赏按钮已并入 HUD 体系（见 index.html #orbitBtn）
 
   const noticeBtn = document.getElementById('noticeBtn');
   if (noticeBtn) noticeBtn.addEventListener('click', openRuntimePanel);
