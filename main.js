@@ -710,7 +710,7 @@ function applyRebind(code) {
 const TOUCH_LAYOUT_STORAGE = 'zeroPoint.touchLayout.v1';
 const TOUCH_LAYOUT_IDS = Object.freeze([
   'joystick', 'fireBtn', 'reloadBtn2', 'jumpBtn', 'crouchBtn',
-  'switchBtn', 'plantBtn', 'viewBtn', 'orbitBtn',
+  'switchBtn', 'plantBtn', 'viewBtn', 'orbitBtn', 'danceBtn',
 ]);
 const TOUCH_LAYOUT_META = Object.freeze({
   joystick:   { label: '移动摇杆' },
@@ -722,6 +722,7 @@ const TOUCH_LAYOUT_META = Object.freeze({
   plantBtn:   { label: '安放 C4' },
   viewBtn:    { label: '切换视角' },
   orbitBtn:   { label: '观赏' },
+  danceBtn:   { label: '跳舞' },
 });
 let touchLayouts = { portrait: {}, landscape: {} };
 let touchLayoutWorking = null;
@@ -1112,7 +1113,9 @@ const state = {
   c4PlantPending: false,
   c4PlantRequestId: null,
   crouching: false,
-  orbit: null,   // __zpOrbit: { phase, t, duration, startYaw, radius }
+  orbit: null,
+  dancing: false,
+  danceExit: null,
 };
 
 let currentGameplay = { type: 'ffa_plant', spawn: { weapon: 'gun', c4: true } };
@@ -2199,6 +2202,8 @@ function handleServerMsg(msg) {
       if (op.crouching && op._jumping) op.crouching = false;
     } else if (msg.action === 'reload') {
       op.reloadAnimStart = performance.now();
+    } else if (msg.action === 'dance') {
+      op.dancing = !!msg.data?.enabled;
     } else if (msg.action === 'switch_gun') {
       if (msg.data && msg.data.weapon) op.weapon = msg.data.weapon;
     }
@@ -2674,6 +2679,7 @@ function updateOtherPlayers(dt) {
       jumping: !!op._jumping,
       crouching: !!op.crouching && !op._jumping,
       moving: !!op.moving,
+      dancing: !!op.dancing,
     }, dt);
     op.vrm.update(dt);
   }
@@ -3855,6 +3861,25 @@ function updatePlayer(dt) {
     player.moving = false;
     return;
   }
+  if (state.dancing) {
+    let dfx = 0, dfz = 0;
+    if (isActionDown('forward')) dfz += 1;
+    if (isActionDown('back')) dfz -= 1;
+    if (isActionDown('left')) dfx -= 1;
+    if (isActionDown('right')) dfx += 1;
+    dfx += touch.moveX;
+    dfz -= touch.moveY;
+    if (Math.hypot(dfx, dfz) > 0.1) {
+      stopDance();
+    } else {
+      player.moving = false;
+      const prevY = player.pos.y;
+      player.vy -= GRAVITY * dt;
+      player.pos.y += player.vy * dt;
+      resolveVertical(prevY);
+      return;
+    }
+  }
   let fx = 0, fz = 0;
   if (isActionDown('forward')) fz += 1;
   if (isActionDown('back')) fz -= 1;
@@ -3880,6 +3905,7 @@ function updatePlayer(dt) {
 }
 function jump() {
   if (!state.alive || !player.onGround) return;
+  if (state.dancing) stopDance();
   if (state.crouching && !setCrouch(false)) return;
   player.vy = JUMP_VELOCITY;
   player.onGround = false;
@@ -3956,6 +3982,39 @@ function startOrbit() {
   updateViewModelVisible();
 }
 
+const DANCE_CAM_LERP_MS = 600;
+const DANCE_VIEW_MODE = 2;
+
+function startDance() {
+  if (!state.playing || !state.alive || state.orbit) return;
+  if (state.dancing) return;
+  if (player._jumping) return;
+  if (state.crouching) setCrouch(false);
+  state.dancing = true;
+  state.danceExit = null;
+  state.viewMode = DANCE_VIEW_MODE;
+  state.thirdPerson = true;
+  updateViewModelVisible();
+  updateViewButton();
+  if (playerVRM) setVRMAnimation(playerVRM, 'dance', null);
+  sendMsg({ type: 'action', action: 'dance', data: { enabled: true } });
+}
+
+function stopDance() {
+  if (!state.dancing) return;
+  state.dancing = false;
+  state.danceExit = {
+    fromPos: camera.position.clone(),
+    fromQuat: camera.quaternion.clone(),
+    startAt: performance.now(),
+  };
+  state.viewMode = 0;
+  state.thirdPerson = false;
+  updateViewModelVisible();
+  updateViewButton();
+  sendMsg({ type: 'action', action: 'dance', data: { enabled: false } });
+}
+
 function _easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
 function _easeOut(t) { return 1 - Math.pow(1-t, 3); }
 
@@ -4023,7 +4082,18 @@ function updateOrbitCamera(dt) {
 
 function updateCamera() {
   if (state.orbit) {
-    // orbit 相机会在 loop 里独立处理，这里不覆盖
+    return;
+  }
+  if (state.danceExit) {
+    const d = state.danceExit;
+    const p = Math.min(1, (performance.now() - d.startAt) / DANCE_CAM_LERP_MS);
+    const e = _easeInOut(p);
+    const eyeY = player.pos.y + (state.crouching ? 1.35 : 1.7);
+    const tgtPos = new THREE.Vector3(player.pos.x, eyeY, player.pos.z);
+    const tgtQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'));
+    camera.position.lerpVectors(d.fromPos, tgtPos, e);
+    camera.quaternion.copy(d.fromQuat).slerp(tgtQ, e);
+    if (p >= 1) state.danceExit = null;
     return;
   }
   if (state.viewMode === 1 || state.viewMode === 2) {
@@ -4083,6 +4153,7 @@ async function _loadVRMAClips() {
       shoot: 'VRMA_04.vrma',
       jump: 'Jump.vrma',
       crouch: 'VRMA_07.vrma',
+      dance: 'dance01.vrma',
     };
     const clips = {};
 
@@ -4131,7 +4202,7 @@ function _getVRMAction(vrm, key) {
     return null;
   }
 
-  if (key === 'jump' || key === 'crouch') {
+  if (key === 'jump' || key === 'crouch' || key === 'dance') {
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
   } else {
@@ -4314,8 +4385,14 @@ function _finishCrouchAnimation(vrm, enabled) {
   return true;
 }
 
-function updateVRMAvatarAnimation(vrm, { jumping = false, crouching = false, moving = false } = {}, dt = 0) {
+function updateVRMAvatarAnimation(vrm, { jumping = false, crouching = false, moving = false, dancing = false } = {}, dt = 0) {
   if (!vrm) return;
+  if (dancing && _vrmaClips && _vrmaClips.dance) {
+    setVRMAnimation(vrm, 'dance', null);
+    const m = _getMixer(vrm);
+    if (m) m.update(dt);
+    return;
+  }
 
   if (jumping) {
     _stopCrouchAction(vrm);
@@ -4409,6 +4486,7 @@ function updatePlayerVRM(dt) {
     jumping: !!player._jumping,
     crouching: !!state.crouching && !player._jumping,
     moving: !!player.moving,
+    dancing: !!state.dancing,
   }, dt);
 }
 
@@ -4691,6 +4769,7 @@ function predictLocalHit(origin, dir) {
 function playerShoot() {
   if (state.orbit) return;
   if (!state.playing || !state.alive) return;
+  if (state.dancing) { stopDance(); return; }
   if (state.reloading) return;
   if (state.shootCd > 0) return;
   if (state.holding !== 'gun') return;
@@ -4934,6 +5013,7 @@ function roleAt(cx, cy) {
     if (el.closest('#gyroBtn')) return 'gyroBtn';
     if (el.closest('#unstuckBtn')) return 'unstuckBtn';
     if (el.closest('#orbitBtn')) return 'orbitBtn';
+    if (el.closest('#danceBtn')) return 'danceBtn';
     if (el.closest('#joystick')) return 'joy';
     if (el.closest('#touchLayoutHudBtn')) return 'touchLayoutBtn';
     if (el.closest('#keybindPanel')) return 'keybindUI';
@@ -4997,6 +5077,7 @@ function setupTouch() {
       else if (role === 'gyroBtn') toggleGyro();
       else if (role === 'unstuckBtn') sendUnstuck();
       else if (role === 'orbitBtn') startOrbit();
+      else if (role === 'danceBtn') { if (state.dancing) stopDance(); else startDance(); }
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
@@ -5202,6 +5283,7 @@ function mobileHudPressed(id) {
   if (id === 'fireBtn') return fireIds.size > 0 || touch.fire;
   if (id === 'crouchBtn') return !!state.crouching;
   if (id === 'joystick') return Math.abs(touch.moveX) > 0.06 || Math.abs(touch.moveY) > 0.06;
+  if (id === 'danceBtn') return !!state.dancing;
   return false;
 }
 
@@ -5364,6 +5446,13 @@ function mobileHudDrawIcon(id, r, opts = {}) {
     c.stroke();
   } else if (id === 'exitBtn') {
     c.beginPath(); c.moveTo(cx-s*.50,cy-s*.50); c.lineTo(cx+s*.50,cy+s*.50); c.moveTo(cx+s*.50,cy-s*.50); c.lineTo(cx-s*.50,cy+s*.50); c.stroke();
+  } else if (id === 'danceBtn') {
+    c.beginPath(); c.arc(cx+s*.06, cy-s*.58, s*.18, 0, Math.PI*2); c.fill();
+    c.beginPath(); c.moveTo(cx+s*.02, cy-s*.40); c.lineTo(cx-s*.16, cy+s*.08); c.lineTo(cx+s*.14, cy+s*.28); c.stroke();
+    c.beginPath(); c.moveTo(cx-s*.06, cy-s*.26); c.lineTo(cx-s*.60, cy-s*.50); c.stroke();
+    c.beginPath(); c.moveTo(cx+s*.06, cy-s*.24); c.lineTo(cx+s*.58, cy-s*.02); c.stroke();
+    c.beginPath(); c.moveTo(cx-s*.14, cy+s*.08); c.lineTo(cx-s*.46, cy+s*.62); c.stroke();
+    c.beginPath(); c.moveTo(cx+s*.12, cy+s*.26); c.lineTo(cx+s*.38, cy+s*.64); c.stroke();
   }
   c.restore();
 }
@@ -5474,6 +5563,7 @@ function mobileHudSpriteSignature(id) {
   else if (id==='switchBtn') dynamic=`s:${state.holding}`;
   else if (id==='plantBtn') dynamic=`p:${plantButtonState.holding?1:0}:${Math.round((plantButtonState.progress||0)*30)}`;
   else if (id==='optBtn') dynamic=`o:${optimizeMode?1:0}`;
+  else if (id==='danceBtn') dynamic=`d:${state.dancing?1:0}`;
   const selected = touchLayoutEditing ? (getTouchWorkingSelected()?.id || '') : '';
   return `${visible}|${x}|${dynamic}|e:${selected}`;
 }
@@ -5491,7 +5581,7 @@ function mobileHudDrawSpriteById(id) {
   const kindById = {
     exitBtn:'red', viewBtn:'blue', gyroBtn:'cyan', optBtn:'gold', unstuckBtn:'gold',
     keybindHudBtn:'utility', touchLayoutHudBtn:'gold', fireBtn:'red', reloadBtn2:'blue',
-    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan'
+    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan'
   };
   const labels = {
     exitBtn:'退出',
@@ -5506,7 +5596,8 @@ function mobileHudDrawSpriteById(id) {
     jumpBtn:'跳跃',
     crouchBtn:state.crouching?'起身':'蹲下',
     switchBtn:state.holding==='c4'?'切枪':'装备',
-    orbitBtn:'观赏'
+    orbitBtn:'观赏',
+    danceBtn:state.dancing?'停止':'跳舞'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -5540,7 +5631,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','orbitBtn','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','danceBtn','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
@@ -6011,6 +6102,13 @@ function loop() {
     }
 
     updatePlayerVRM(dt);
+    if (state.dancing && playerVRM) {
+      const __da = _getVRMAction(playerVRM, 'dance');
+      if (__da) {
+        const __dur = (__da.getClip() && __da.getClip().duration) || 0;
+        if (__dur > 0.1 && __da.time >= __dur - 0.05) stopDance();
+      }
+    }
     updateFirstPersonClip();
     updateOtherPlayers(dt);
     updateExplosionLights();
