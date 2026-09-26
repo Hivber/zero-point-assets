@@ -5989,42 +5989,10 @@ function drawMinimap() {
 /* ==================== [M] 主循环 ==================== */
 let posSendAccum = 0;
 let lastC4BeepSec = -1;
-// ===== VRM 诊断覆盖层 =====
-const __zpVrmDiag = true;
-let _diagEl = null;
-function _updateVrmDiag() {
-  if (!_diagEl) {
-    _diagEl = document.createElement('div');
-    _diagEl.id = 'zpVrmDiag';
-    _diagEl.style.cssText = 'position:fixed;left:8px;bottom:60px;z-index:99999;'
-      + 'background:rgba(0,0,0,.82);color:#7fe9ff;font:11px/1.4 monospace;'
-      + 'padding:6px 8px;border:1px solid #7fe9ff;border-radius:4px;'
-      + 'white-space:pre;pointer-events:none;max-width:60vw;';
-    document.body.appendChild(_diagEl);
-  }
-  if (!state.playing) { _diagEl.style.display = 'none'; return; }
-  _diagEl.style.display = 'block';
-
-  let info = '';
-  info += 'vrmUrl: ' + (vrmUrl || 'null') + '\n';
-  info += 'playerVRM: ' + (playerVRM ? 'YES' : 'NO') + '\n';
-  if (playerVRM && playerVRM.scene) {
-    info += 'visible: ' + playerVRM.scene.visible + '\n';
-    info += 'position: (' + playerVRM.scene.position.x.toFixed(1) + ',' + playerVRM.scene.position.y.toFixed(1) + ',' + playerVRM.scene.position.z.toFixed(1) + ')\n';
-    info += 'playerPos: (' + player.pos.x.toFixed(1) + ',' + player.pos.y.toFixed(1) + ',' + player.pos.z.toFixed(1) + ')\n';
-  }
-  info += 'alive: ' + state.alive + '\n';
-  info += 'viewMode: ' + state.viewMode + '\n';
-  info += 'fpClip: ' + (_fpClipEnabled ? 'ON' : 'OFF') + ' c=' + (fpClipPlane ? fpClipPlane.constant.toFixed(2) : 'null') + '\n';
-  info += 'others: ' + otherPlayers.size + '\n';
-
-  _diagEl.textContent = info;
-}
-
+// VRM diag removed
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
-  try { _updateVrmDiag(); } catch (e) {}
 
   if (state.playing) {
     state.shootCd = Math.max(0, state.shootCd - dt);
