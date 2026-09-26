@@ -471,6 +471,9 @@ body>canvas{position:fixed;top:0;left:0}
 #orbitBtn{position:absolute;right:286px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,80,120,.8);border:1px solid rgba(120,170,230,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
 #orbitBtn:active{transform:scale(.94);background:rgba(60,120,180,.95)}
 @media (max-width:700px){#orbitBtn{right:calc(280px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
+#danceBtn{position:absolute;right:340px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,120,80,.8);border:1px solid rgba(120,230,170,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
+#danceBtn:active{transform:scale(.94);background:rgba(60,180,120,.95)}
+@media (max-width:700px){#danceBtn{right:calc(340px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
 @media (max-width:700px){
   #unstuckBtn{right:calc(220px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
 }
@@ -588,6 +591,7 @@ body.mobile-canvas-hud #optBtn,
 body.mobile-canvas-hud #keybindHudBtn,
 body.mobile-canvas-hud #touchLayoutHudBtn,
 body.mobile-canvas-hud #orbitBtn,
+body.mobile-canvas-hud #danceBtn,
 body.mobile-canvas-hud #unstuckBtn{
   background:transparent!important;
   background-image:none!important;
@@ -611,6 +615,7 @@ body.mobile-canvas-hud #optBtn,
 body.mobile-canvas-hud #keybindHudBtn,
 body.mobile-canvas-hud #touchLayoutHudBtn,
 body.mobile-canvas-hud #orbitBtn,
+body.mobile-canvas-hud #danceBtn,
 body.mobile-canvas-hud #unstuckBtn{
   opacity:0!important;
   filter:none!important;
