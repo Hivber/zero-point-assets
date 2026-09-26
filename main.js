@@ -22,7 +22,7 @@ import {
   PROTOCOL_VERSION, CLIENT_VERSION, RESOURCE_VERSION,
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
   encryptMsg, decryptMsg,
-} from './models/client-infra.js';
+} from 'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/models/client-infra.js';
 
 /* [VERSION-MARK] v33030-vrma07-crouch-keybind-canvas-hud-minimal */
 try { document.title = '零点行动 v1.0'; } catch(e){}
