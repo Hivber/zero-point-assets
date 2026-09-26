@@ -478,6 +478,15 @@ function buildQualityPanel() {
   updateQualityPanelUI();
 }
 
+// __zpClearWsUrl：清掉旧隧道地址缓存
+try {
+  const _old = localStorage.getItem('zp.wsUrl');
+  if (_old && !_old.includes('ofalias')) {
+    localStorage.removeItem('zp.wsUrl');
+    console.log('[NET] cleared old ws url:', _old);
+  }
+} catch (e) {}
+
 const VRM_YAW_OFFSET = 0;
 
 
