@@ -1695,7 +1695,8 @@ function openSocket(resetCandidates = false) {
         if (Number.isFinite(Number(msg.assetTotalBytes))) assetTotalBytes = Number(msg.assetTotalBytes);
         latestNotices = Array.isArray(msg.notices) ? msg.notices : latestNotices;
         latestActivities = Array.isArray(msg.activities) ? msg.activities : latestActivities;
-        if (!protocolCompatible || !versionCompatible) {
+        const __zpDisableVerCheck = true;
+        if (false && (!protocolCompatible || !versionCompatible)) {
           showUpdateRequired(msg.versions || {});
         } else if (maintenanceMode) {
           setMenuNetStatus('服务器维护中' + (maintenanceMessage ? '：' + maintenanceMessage : ''));
@@ -5766,7 +5767,7 @@ function toggleOptimizeMode() {
 
 function startGame() {
   if (maintenanceMode) { setMenuNetStatus('服务器维护中' + (maintenanceMessage ? '：' + maintenanceMessage : '')); return; }
-  if (!protocolCompatible || !versionCompatible) { showUpdateRequired({}); return; }
+  if (false && (!protocolCompatible || !versionCompatible)) { showUpdateRequired({}); return; }
   // startGame 不再清理 gasTanks，保持客户端和服务端坐标一致
   // startGame 不再清理 barrels
   
