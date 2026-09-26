@@ -3987,6 +3987,24 @@ const DANCE_CAM_LERP_MS = 600;
 const DANCE_VIEW_MODE = 2;
 
 function startDance() {
+  try {
+    let dbg = document.getElementById('__zpDanceDbg');
+    if (!dbg) {
+      dbg = document.createElement('div');
+      dbg.id = '__zpDanceDbg';
+      dbg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:999999;background:#000;color:#0f0;padding:18px;font-family:monospace;font-size:13px;max-width:90vw;word-break:break-all;border:2px solid #0f0;line-height:1.6;';
+      document.body.appendChild(dbg);
+    }
+    const clips = _vrmaClips ? Object.keys(_vrmaClips) : null;
+    dbg.textContent =
+      'startDance called\n' +
+      'playing=' + state.playing + ' alive=' + state.alive + ' orbit=' + !!state.orbit + '\n' +
+      'dancing=' + state.dancing + ' jumping=' + player._jumping + '\n' +
+      'playerVRM=' + !!playerVRM + '\n' +
+      '_vrmaClips=' + (clips ? JSON.stringify(clips) : 'null') + '\n' +
+      'hasDance=' + !!(_vrmaClips && _vrmaClips.dance);
+    setTimeout(() => { if (dbg && dbg.parentNode) dbg.remove(); }, 8000);
+  } catch(e) {}
   if (!state.playing || !state.alive || state.orbit) return;
   if (state.dancing) return;
   if (player._jumping) return;
@@ -3997,6 +4015,7 @@ function startDance() {
   state.thirdPerson = true;
   updateViewModelVisible();
   updateViewButton();
+  console.log('[DANCE] startDance _vrmaClips=', _vrmaClips, 'dance=', _vrmaClips && _vrmaClips.dance, 'playerVRM=', !!playerVRM);
   if (playerVRM) setVRMAnimation(playerVRM, 'dance', null);
   sendMsg({ type: 'action', action: 'dance', data: { enabled: true } });
 }
@@ -4173,6 +4192,8 @@ async function _loadVRMAClips() {
 
     _vrmaClips = clips;
     console.log('[VRMA] 已加载:', Object.keys(clips).join(', '));
+    window.__ZP_VRMA_KEYS__ = Object.keys(clips);
+    console.log('[VRMA-DEBUG] dance clip =', !!clips.dance, clips.dance);
     if (!clips.crouch) console.warn('[VRMA] VRMA_07 深蹲动画未加载，蹲下将退回无动画状态');
     return clips;
   })().finally(() => {
