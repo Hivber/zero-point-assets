@@ -4292,7 +4292,7 @@ const ActionPanel = (function () {
     const W = window.innerWidth, H = window.innerHeight;
 
     // 全屏半透明灰
-    ctx.fillStyle = 'rgba(18, 20, 24, 0.72)';
+    ctx.fillStyle = 'rgba(18, 20, 24, 0.45)';
     ctx.fillRect(0, 0, W, H);
 
     // 卡片尺寸
@@ -4303,8 +4303,8 @@ const ActionPanel = (function () {
     const cardY = (H - cardH) / 2;
 
     // 卡片
-    ctx.fillStyle = 'rgba(28, 32, 38, 0.94)';
-    _rr(ctx, cardX, cardY, cardW, cardH, 14);
+    ctx.fillStyle = 'rgba(28, 32, 38, 0.72)';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
     ctx.fill();
     ctx.strokeStyle = 'rgba(150, 170, 190, 0.22)';
     ctx.lineWidth = 1;
@@ -4348,7 +4348,7 @@ const ActionPanel = (function () {
 
       // 行背景
       ctx.fillStyle = isActive ? 'rgba(80, 160, 240, 0.16)' : 'rgba(255, 255, 255, 0.045)';
-      _rr(ctx, rowX, y, rowW, rowHeight, 10);
+      ctx.fillRect(rowX, y, rowW, rowHeight);
       ctx.fill();
 
       // 图标圆底
