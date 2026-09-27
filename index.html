@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>零点行动 · ZERO POINT 3D</title>
-<script>window.__ZP_WS_URL__='ws://hk-8.qwq.fan:36905';</script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/style.css?v=killcanvas">
+<script>window.__ZP_WS_URL__='ws://160.30.231.176:49375';</script>
+<link rel="stylesheet" href="/style.css?v=killcanvas">
 <style id="__ZP_CANVAS_FIX__">
 body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !important; }
 </style>
@@ -72,9 +72,7 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
       </button>
 
       <button class="notice-btn" id="noticeBtn">系统消息 <span id="noticeBadge" class="notice-badge hidden">0</span></button>
-      <button class="notice-btn keybind-open" id="keybindOpenBtn">⌨ 自定义键位</button>
-      <button class="notice-btn touch-layout-open hidden" id="touchLayoutOpenBtn">🎮 自定义操作</button>
-      <div id="runtimePanel" class="runtime-panel hidden">
+                  <div id="runtimePanel" class="runtime-panel hidden">
         <div class="runtime-panel-card">
           <div class="runtime-panel-head"><b>系统中心</b><button id="runtimePanelClose">×</button></div>
           <div id="runtimePanelList" class="runtime-panel-list"></div>
@@ -203,8 +201,8 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
   <button id="gyroBtn" aria-label="陀螺仪">🎯</button>
   <button id="optBtn" aria-label="优化模式">⚡</button>
   <button id="viewBtn" class="touch-layout-item" data-touch-layout-id="viewBtn" data-touch-layout-label="切换视角" aria-label="主视角（第一人称）">👁️</button>
-  <button id="keybindHudBtn" aria-label="自定义键位">⌨️</button>
-  <button id="touchLayoutHudBtn" class="touch-layout-open hidden" aria-label="自定义操作">🎮</button>
+  
+  
   <button id="unstuckBtn" aria-label="自杀脱困">💀</button>
 <button id="orbitBtn" class="touch-layout-item" data-touch-layout-id="orbitBtn" data-touch-layout-label="观赏" aria-label="观赏视角">🎬</button>
 <button id="danceBtn" class="touch-layout-item" data-touch-layout-id="danceBtn" data-touch-layout-label="跳舞" aria-label="跳舞">💃</button>
@@ -230,15 +228,15 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
 <div id="switchBtn" class="hidden touch-layout-item" data-touch-layout-id="switchBtn" data-touch-layout-label="切换武器">💣</div>
 <div id="dropBtn" class="hidden">⬇️</div>
 
-<script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
+<script src="/vendor/howler/howler.min.js"></script>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@2.1.2/lib/three-vrm.module.js",
-    "@pixiv/three-vrm-animation": "https://unpkg.com/@pixiv/three-vrm-animation@2.1.2/lib/three-vrm-animation.module.js",
-    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.8/build/index.module.js"
+    "three": "https://cdn.jsdmirror.com/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdmirror.com/npm/three@0.160.0/examples/jsm/",
+    "@pixiv/three-vrm": "/vendor/three-vrm/lib/three-vrm.module.js",
+    "@pixiv/three-vrm-animation": "/vendor/three-vrm-animation/lib/three-vrm-animation.module.js",
+    "three-mesh-bvh": "/vendor/three-mesh-bvh/build/index.module.js"
   }
 }
 </script>
@@ -269,7 +267,7 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
   try {
     window.__ZP_BOOT_STAGE__ = 'module-import';
     show('正在加载前端模块…');
-    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@9ba2fd8/main.js?v=killcanvas');
+    const importPromise = import('/main.js?v=zcache01');
     await Promise.race([
       importPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),

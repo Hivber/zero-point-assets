@@ -27,9 +27,9 @@ export function decryptMsg(b64) {
   }
 }
 
-export const PROTOCOL_VERSION = 33;
-export const CLIENT_VERSION = '33.0.0';
-export const RESOURCE_VERSION = '33.0.0';
+export const PROTOCOL_VERSION = 1;
+export const CLIENT_VERSION = '1.0.0';
+export const RESOURCE_VERSION = '1.0.0';
 
 export function createRequestId(prefix = 'req') {
   const a = Math.random().toString(36).slice(2, 10);

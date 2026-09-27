@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>零点行动 · ZERO POINT 3D</title>
+<script>window.__ZP_WS_URL__='ws://160.30.231.176:49375';</script>
+<link rel="stylesheet" href="/style.css?v=killcanvas">
+<style id="__ZP_CANVAS_FIX__">
+body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !important; }
+</style>
+<style id="__ZP_CF_MENU__">
+#menu{position:fixed;inset:0;z-index:900;display:grid;grid-template-rows:56px 1fr 64px;background:radial-gradient(ellipse at 30% 20%,rgba(120,90,30,.18),transparent 60%),radial-gradient(ellipse at 80% 90%,rgba(30,60,100,.15),transparent 55%),linear-gradient(180deg,#0b0d10,#05070a);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#d8dce2;overflow:hidden}
+#menu.hidden{display:none!important}
+.cf-bg{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(212,162,76,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(212,162,76,.03) 1px,transparent 1px);background-size:40px 40px;-webkit-mask-image:radial-gradient(circle at 50% 50%,#000 20%,transparent 80%);mask-image:radial-gradient(circle at 50% 50%,#000 20%,transparent 80%)}
+.cf-top{display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:linear-gradient(180deg,rgba(20,24,30,.98),rgba(10,13,17,.9));border-bottom:1px solid rgba(212,162,76,.35);position:relative;z-index:2}
+.cf-brand{display:flex;align-items:center;gap:12px}
+.cf-brand-mark{width:4px;height:32px;background:linear-gradient(180deg,#e8c66c,#a67a28);box-shadow:0 0 12px rgba(212,162,76,.6);transform:skewX(-8deg)}
+.cf-brand-text{display:flex;flex-direction:column}
+.cf-brand-cn{font-size:15px;font-weight:900;letter-spacing:5px;color:#fff}
+.cf-brand-en{font-size:8px;letter-spacing:4px;color:#8b98a5;margin-top:2px}
+.cf-top-info{display:flex;align-items:center;gap:14px;font-size:11px}
+.cf-tag{color:#a6b0ba;letter-spacing:1px}
+.cf-tag b{color:#e8c66c;font-weight:900}
+.cf-sep{width:1px;height:14px;background:rgba(255,255,255,.12)}
+.cf-conn{display:flex;align-items:center;gap:6px}
+.cf-conn i{width:7px;height:7px;border-radius:50%;background:#666;transition:all .3s}
+.cf-conn i.on{background:#4ddb82;box-shadow:0 0 10px rgba(77,219,130,.9)}
+.cf-conn i.off{background:#ff5a5a;box-shadow:0 0 10px rgba(255,90,90,.9)}
+.cf-conn b{color:#d8dce2;letter-spacing:1.5px;font-weight:700}
+.cf-main{display:grid;grid-template-columns:200px 1fr 320px;position:relative;z-index:2;min-height:0;overflow:hidden}
+.cf-nav{display:flex;flex-direction:column;padding:20px 0;background:linear-gradient(90deg,rgba(15,18,23,.9),rgba(15,18,23,.5));border-right:1px solid rgba(212,162,76,.18)}
+.cf-nav-fill{flex:1}
+.cf-nav-item{position:relative;display:flex;align-items:center;gap:12px;padding:14px 24px;background:transparent;border:0;border-left:3px solid transparent;color:#8b98a5;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:2px;text-align:left;cursor:pointer;transition:all .18s}
+.cf-nav-item span{font-size:10px;letter-spacing:1px;color:#6b7885;font-weight:800;min-width:24px}
+.cf-nav-item:hover{color:#c8d2dc;background:rgba(212,162,76,.04)}
+.cf-nav-item.active{color:#fff;border-left-color:#d4a24c;background:linear-gradient(90deg,rgba(212,162,76,.14),transparent)}
+.cf-nav-item.active span{color:#e8c66c}
+.cf-nav-item.muted{opacity:.65}
+.cf-center{position:relative}
+.cf-side{padding:20px;overflow-y:auto;background:linear-gradient(270deg,rgba(15,18,23,.9),rgba(15,18,23,.5));border-left:1px solid rgba(212,162,76,.18)}
+.cf-card{background:linear-gradient(180deg,rgba(24,28,34,.95),rgba(14,17,22,.95));border:1px solid rgba(212,162,76,.25);margin-bottom:16px;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}
+.cf-card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(212,162,76,.16);background:linear-gradient(180deg,rgba(212,162,76,.06),transparent);font-size:10px;letter-spacing:3px;color:#e8c66c;font-weight:800}
+.cf-card-head b{color:#4ddb82;font-size:9px}
+.cf-card-body{padding:12px 14px;font-size:12px;line-height:1.7}
+.cf-kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.cf-kv:last-child{border-bottom:0}
+.cf-kv span{color:#8b98a5}
+.cf-kv b{color:#e8c66c;font-weight:700}
+.cf-title-lg{font-size:20px;font-weight:900;color:#fff;letter-spacing:2px;margin-bottom:4px}
+.cf-title-en{font-size:9px;letter-spacing:4px;color:#e8c66c;margin-bottom:12px}
+.cf-list-item{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px}
+.cf-list-item:last-child{border-bottom:0}
+.cf-list-item b{color:#e8c66c;display:block;margin-bottom:2px}
+.cf-list-item p{color:#8b98a5;margin:0;line-height:1.5}
+.cf-foot{display:flex;align-items:center;gap:12px;padding:0 20px;background:linear-gradient(0deg,rgba(20,24,30,.98),rgba(10,13,17,.9));border-top:1px solid rgba(212,162,76,.35);position:relative;z-index:2}
+.cf-enter{display:flex;align-items:center;gap:14px;padding:8px 24px;background:linear-gradient(180deg,#2a2f37,#15181d);border:1px solid #d4a24c;color:#fff;font-family:inherit;cursor:pointer;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);box-shadow:0 0 20px rgba(212,162,76,.25),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s}
+.cf-enter:hover{background:linear-gradient(180deg,#343a44,#1a1e24);box-shadow:0 0 30px rgba(212,162,76,.5),inset 0 1px 0 rgba(255,255,255,.12)}
+.cf-enter:active{transform:translateY(1px)}
+.cf-enter-tri{color:#e8c66c;font-size:12px}
+.cf-enter-txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2}
+.cf-enter-txt b{font-size:14px;letter-spacing:4px}
+.cf-enter-txt small{font-size:8px;letter-spacing:3px;color:#8b98a5;margin-top:2px}
+.cf-notice{display:flex;align-items:center;gap:8px;padding:10px 18px;background:rgba(20,24,30,.7);border:1px solid rgba(212,162,76,.3);color:#a6b0ba;font-family:inherit;font-size:11px;letter-spacing:2px;cursor:pointer;transition:all .15s}
+.cf-notice:hover{color:#fff;border-color:#d4a24c}
+.cf-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;background:#d94a4a;color:#fff;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:0}
+.cf-badge.hidden{display:none}
+.cf-foot-fill{flex:1}
+.cf-foot-info{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:1.5px;color:#6b7885}
+.cf-foot-info b{color:#e8c66c}
+.cf-foot-info i{width:3px;height:3px;border-radius:50%;background:#4e6075}
+.cf-modal{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.7);backdrop-filter:blur(4px)}
+.cf-modal.hidden{display:none!important}
+.cf-modal-card{width:min(560px,100%);max-height:82vh;display:flex;flex-direction:column;background:linear-gradient(180deg,#14181e,#0a0d11);border:1px solid rgba(212,162,76,.5);clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));box-shadow:0 24px 60px rgba(0,0,0,.75)}
+.cf-modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid rgba(212,162,76,.3);background:linear-gradient(180deg,rgba(212,162,76,.08),transparent)}
+.cf-modal-head b{font-size:14px;letter-spacing:3px;color:#fff}
+.cf-modal-head button{width:32px;height:32px;background:transparent;border:1px solid rgba(212,162,76,.3);color:#a6b0ba;font-size:18px;line-height:1;cursor:pointer;font-family:inherit}
+.cf-modal-head button:hover{color:#fff;border-color:#d4a24c}
+.cf-modal-body{padding:16px 20px;overflow-y:auto;font-size:12px}
+.cf-modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:12px 20px;border-top:1px solid rgba(212,162,76,.16)}
+.cf-modal-foot button{padding:8px 20px;background:rgba(212,162,76,.1);border:1px solid rgba(212,162,76,.4);color:#d8dce2;font-family:inherit;font-size:12px;letter-spacing:2px;cursor:pointer}
+.cf-modal-foot button:hover{background:rgba(212,162,76,.2);color:#fff}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="logo">零点行动</div>
+  <div class="sub">ZERO POINT 3D</div>
+  <div class="bar"><div class="bar-fill" id="loadingBar"></div></div>
+  <div class="status" id="loadingStatus">连接服务器…</div>
+</div>
+
+
+<div id="menu" class="hidden">
+  <div class="cf-bg"></div>
+  <header class="cf-top">
+    <div class="cf-brand">
+      <span class="cf-brand-mark"></span>
+      <div class="cf-brand-text">
+        <span class="cf-brand-cn">零点行动</span>
+        <span class="cf-brand-en">ZERO POINT</span>
+      </div>
+    </div>
+    <div class="cf-top-info">
+      <span class="cf-tag">LV.<b>01</b></span>
+      <span class="cf-tag" id="cfPlayerName">玩家</span>
+      <span class="cf-sep"></span>
+      <span class="cf-conn"><i id="cfStatusDot"></i><b id="menuNetStatus">连接中</b></span>
+    </div>
+  </header>
+  <div class="cf-main">
+    <nav class="cf-nav" id="cfNav">
+      <button class="cf-nav-item active" data-tab="hall"><span>01</span>作战大厅</button>
+      <button class="cf-nav-item" data-tab="weapons"><span>02</span>武器系统</button>
+      <button class="cf-nav-item" data-tab="records"><span>03</span>战斗记录</button>
+      <button class="cf-nav-item" data-tab="missions"><span>04</span>任务中心</button>
+      <div class="cf-nav-fill"></div>
+      <button class="cf-nav-item muted" data-tab="sys"><span>SYS</span>系统状态</button>
+    </nav>
+    <section class="cf-center"></section>
+    <aside class="cf-side" id="cfSide"></aside>
+  </div>
+  <footer class="cf-foot">
+    <button class="cf-enter" id="startBtn">
+      <span class="cf-enter-tri">&#9654;</span>
+      <span class="cf-enter-txt"><b>进入战斗</b><small>ENTER COMBAT</small></span>
+    </button>
+    <button class="cf-notice" id="noticeBtn">系统消息<span class="cf-badge hidden" id="noticeBadge">0</span></button>
+    <div class="cf-foot-fill"></div>
+    <div class="cf-foot-info">
+      <span id="cfVersion">v1.0.0</span><i></i>
+      <span>在线 <b id="playerCount">0</b></span>
+    </div>
+  </footer>
+  <div id="runtimePanel" class="cf-modal hidden">
+    <div class="cf-modal-card">
+      <div class="cf-modal-head"><b>系统消息</b><button id="runtimePanelClose">&#215;</button></div>
+      <div class="cf-modal-body" id="runtimePanelList"></div>
+    </div>
+  </div>
+  <div id="touchLayoutPanel" class="touch-layout-panel hidden" aria-hidden="true">
+    <div class="touch-layout-toolbar" role="dialog">
+      <div class="touch-layout-title">
+        <div><b>自定义操作</b><small>TOUCH LAYOUT</small></div>
+        <button id="touchLayoutCloseBtn">&#215;</button>
+      </div>
+      <div class="touch-layout-status">
+        <span>拖动按钮调整位置</span>
+        <span id="touchLayoutOrientation">横屏布局</span>
+      </div>
+      <label class="touch-layout-field"><span>选择按钮</span><select id="touchLayoutTarget"></select></label>
+      <div class="touch-layout-range-row">
+        <label><span>大小</span><output id="touchLayoutSizeValue">100%</output></label>
+        <input id="touchLayoutSizeRange" type="range" min="60" max="160" value="100">
+      </div>
+      <div class="touch-layout-range-row">
+        <label><span>透明度</span><output id="touchLayoutOpacityValue">100%</output></label>
+        <input id="touchLayoutOpacityRange" type="range" min="20" max="100" value="100">
+      </div>
+      <label class="touch-layout-visible"><input id="touchLayoutVisible" type="checkbox" checked><span>显示这个按钮</span></label>
+      <div class="touch-layout-actions">
+        <button id="touchLayoutResetBtn">恢复默认</button>
+        <button id="touchLayoutDoneBtn">完成</button>
+      </div>
+      <div class="touch-layout-hint" id="touchLayoutHint">位置会自动保存。</div>
+    </div>
+  </div>
+</div>
+<div id="hud" class="hidden">
+  <canvas id="minimap" width="320" height="320"></canvas>
+  <div id="killFeed"></div>
+  <div id="c4Timer" class="hidden">40</div>
+  <div id="defuseBar" class="hidden">
+    <div class="defuse-label">敌人正在拆包</div>
+    <div class="defuse-track"><div id="defuseFill"></div></div>
+  </div>
+  <div id="plantHint" class="hidden">已进入安放区</div>
+  <div class="crosshair"><span></span><span></span><span></span><span></span><i></i></div>
+  <div class="hit-marker" id="hitMarker">✕</div>
+  <div class="hp-box">
+    <div class="hp-text" id="hpText">100</div>
+    <div class="hp-bar"><div class="hp-fill" id="hpFill"></div></div>
+  </div>
+  <div class="ammo-box">
+    <div class="ammo"><span id="ammoCur">30</span><small> / <span id="ammoRes">∞</span></small></div>
+    <div class="weapon" id="weaponName">AK47</div>
+  </div>
+  <div class="kills-box" id="killsBox" aria-hidden="true"></div>
+  <button id="exitBtn">✕</button>
+  <button id="gyroBtn" aria-label="陀螺仪">🎯</button>
+  <button id="optBtn" aria-label="优化模式">⚡</button>
+  <button id="viewBtn" class="touch-layout-item" data-touch-layout-id="viewBtn" data-touch-layout-label="切换视角" aria-label="主视角（第一人称）">👁️</button>
+  
+  
+  <button id="unstuckBtn" aria-label="自杀脱困">💀</button>
+<button id="orbitBtn" class="touch-layout-item" data-touch-layout-id="orbitBtn" data-touch-layout-label="观赏" aria-label="观赏视角">🎬</button>
+<button id="danceBtn" class="touch-layout-item" data-touch-layout-id="danceBtn" data-touch-layout-label="跳舞" aria-label="跳舞">💃</button>
+</div>
+
+<canvas id="mobileHudCanvas" aria-hidden="true"></canvas>
+
+<button id="plantBtn" class="hidden touch-layout-item" data-touch-layout-id="plantBtn" data-touch-layout-label="安放 C4">按住安放</button>
+
+<div id="result" class="hidden">
+  <h2 id="resultTitle">胜利</h2>
+  <div class="stats" id="resultStats"></div>
+  <button id="backMenu">返回主菜单</button>
+</div>
+
+<div id="damageFlash"></div>
+
+<div id="joystick" class="hidden touch-layout-item" data-touch-layout-id="joystick" data-touch-layout-label="移动摇杆"><div id="stick"></div></div>
+<div id="fireBtn" class="hidden touch-layout-item" data-touch-layout-id="fireBtn" data-touch-layout-label="开火">💥</div>
+<div id="reloadBtn2" class="hidden touch-layout-item" data-touch-layout-id="reloadBtn2" data-touch-layout-label="换弹">🔄</div>
+<div id="jumpBtn" class="hidden touch-layout-item" data-touch-layout-id="jumpBtn" data-touch-layout-label="跳跃">⬆️</div>
+<div id="crouchBtn" class="hidden touch-layout-item" data-touch-layout-id="crouchBtn" data-touch-layout-label="蹲下 / 起身">🧎‍♂️</div>
+<div id="switchBtn" class="hidden touch-layout-item" data-touch-layout-id="switchBtn" data-touch-layout-label="切换武器">💣</div>
+<div id="dropBtn" class="hidden">⬇️</div>
+
+<script src="/vendor/howler/howler.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdmirror.com/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdmirror.com/npm/three@0.160.0/examples/jsm/",
+    "@pixiv/three-vrm": "/vendor/three-vrm/lib/three-vrm.module.js",
+    "@pixiv/three-vrm-animation": "/vendor/three-vrm-animation/lib/three-vrm-animation.module.js",
+    "three-mesh-bvh": "/vendor/three-mesh-bvh/build/index.module.js"
+  }
+}
+</script>
+
+<script>
+(() => {
+  const show = (msg) => {
+    const st = document.getElementById('loadingStatus');
+    if (st) st.textContent = msg;
+  };
+  window.__ZP_BOOT_STAGE__ = 'html-ready';
+  window.__ZP_SET_BOOT_STATUS__ = show;
+  window.addEventListener('error', (e) => {
+    if (e && e.target && e.target.tagName === 'SCRIPT') {
+      show('前端脚本资源加载失败');
+      console.error('[BOOT] script load error', e.target.src || e.target);
+    }
+  }, true);
+})();
+</script>
+<!-- 登录暂时隐藏：认证恢复时再启用 auth-client.js -->
+<script type="module">
+(async () => {
+  const show = (msg) => {
+    const st = document.getElementById('loadingStatus');
+    if (st) st.textContent = msg;
+  };
+  try {
+    window.__ZP_BOOT_STAGE__ = 'module-import';
+    show('正在加载前端模块…');
+    const importPromise = import('/main.js?v=cfmenu01');
+    await Promise.race([
+      importPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),
+    ]);
+    if (!window.__ZP_MAIN_READY__) {
+      // main.js 会自行进入 init().catch()，这里仅用于确认模块已成功执行。
+      show('前端模块已启动，正在初始化…');
+    }
+  } catch (e) {
+    const detail = String(e?.message || e || '未知模块加载错误');
+    window.__ZP_BOOT_STAGE__ = 'module-import-error';
+    show('前端模块加载失败：' + detail.slice(0, 180));
+    console.error('[BOOT] main.js import failed', e);
+  }
+})();
+</script>
+</body>
+</html>

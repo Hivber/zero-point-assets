@@ -26,7 +26,7 @@ import {
   PROTOCOL_VERSION, CLIENT_VERSION, RESOURCE_VERSION,
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
   encryptMsg, decryptMsg,
-} from 'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/models/client-infra.js';
+} from '/models/client-infra.js';
 
 /* [VERSION-MARK] v33030-vrma07-crouch-keybind-canvas-hud-minimal */
 try { document.title = '零点行动 v1.0'; } catch(e){}
@@ -118,15 +118,7 @@ function paintAssetProgress(force) {
 })();
 
 // ===== 多 CDN 自动择优 =====
-const CDN_CANDIDATES = [
-  'https://cdn.osyb.cn/gh/Hivber/zero-point-assets@main/',
-  'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@main/',
-  'https://cdn.jsdelivr.net.cn/gh/Hivber/zero-point-assets@main/',
-  'https://jsd.onmicrosoft.cn/gh/Hivber/zero-point-assets@main/',
-  'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-  'https://fastly.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-  'https://gcore.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-];
+const CDN_CANDIDATES = ['/'];
 let ASSET_BASE = CDN_CANDIDATES[0];
 
 async function _probeOne(base, timeoutMs) {
@@ -2192,7 +2184,7 @@ function handleServerMsg(msg) {
           const now = performance.now();
           const lastFix = player._lastPosFixAt || 0;
           // 条件：距离 > 8 米 + 玩家不在移动 + 距上次纠正 > 3 秒
-          if (dist > 8.0 && !player.moving && (now - lastFix) > 3000) {
+          if (false) {  // POS-SYNC 临时关闭
             console.log('[POS-SYNC] 强制纠正 dist=' + dist.toFixed(2) + ' ->(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ',' + p.z.toFixed(1) + ')');
             player.pos.set(p.x, p.y, p.z);
             player.vy = 0;
@@ -2818,10 +2810,224 @@ init().then(() => {
   try { reportClientError({ message: detail, stack, source: 'boot.init' }); } catch (reportErr) {}
 });
 
+
+/* ==================== [ZCACHE] 资源本地缓存 + 热更新 ==================== */
+const _zpAssetDB = (() => {
+  const DB_NAME = 'zp_assets_v1';
+  const DB_VER = 1;
+  const STORE = 'files';
+  let _dbp = null;
+  function open() {
+    if (_dbp) return _dbp;
+    _dbp = new Promise((res, rej) => {
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => { _dbp = null; rej(req.error); };
+      req.onblocked = () => { _dbp = null; rej(new Error('IDB blocked')); };
+    });
+    return _dbp;
+  }
+  async function put(key, blob) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(blob, key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  async function get(key) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(key);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  }
+  async function keys() {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAllKeys();
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  }
+  async function del(key) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  return { put, get, keys, del };
+})();
+
+const _zpBlobURLs = Object.create(null);
+
+function _zpNormURL(u) {
+  if (!u) return '';
+  try {
+    let s = String(u);
+    s = s.replace(/^https?:\/\/[^/]+/i, '');
+    s = s.replace(/^blob:[^/]+\//i, '');
+    s = s.replace(/^\/+/, '');
+    const q = s.indexOf('?'); if (q >= 0) s = s.slice(0, q);
+    const h = s.indexOf('#'); if (h >= 0) s = s.slice(0, h);
+    return s;
+  } catch (e) { return ''; }
+}
+
+function _zpDownload(url, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+    xhr.timeout = 90000;
+    if (onProgress) {
+      xhr.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total);
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+      else reject(new Error('HTTP ' + xhr.status));
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.send();
+  });
+}
+
+async function precacheAssets() {
+  let manifest = null;
+  try {
+    const r = await fetch('/api/manifest', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    manifest = await r.json();
+    if (!manifest.ok || !Array.isArray(manifest.files)) throw new Error('manifest 格式错误');
+  } catch (e) {
+    console.warn('[CACHE] manifest 拉取失败，跳过缓存:', e && e.message);
+    return;
+  }
+
+  const files = manifest.files;
+  const needDownload = [];
+  for (const f of files) {
+    try {
+      const cached = await _zpAssetDB.get(f.path);
+      if (!cached || cached.size !== f.size) needDownload.push(f);
+    } catch (e) {
+      needDownload.push(f);
+    }
+  }
+
+  console.log('[CACHE] ' + (files.length - needDownload.length) + '/' + files.length + ' 命中，需下载 ' + needDownload.length);
+
+  if (needDownload.length > 0) {
+    const totalBytes = needDownload.reduce((s, f) => s + (f.size || 0), 0);
+    assetTotalBytes = totalBytes;
+    assetLoadedBytes = 0;
+    let doneBytes = 0;
+    for (const f of needDownload) {
+      const curFileSize = f.size || 0;
+      try {
+        const blob = await _zpDownload('/' + f.path, (loaded) => {
+          assetLoadedBytes = doneBytes + Math.min(loaded, curFileSize);
+          paintAssetProgress(false);
+        });
+        if (!blob || blob.size < 1) throw new Error('空文件');
+        await _zpAssetDB.put(f.path, blob);
+        doneBytes += f.size;
+        assetLoadedBytes = doneBytes;
+        paintAssetProgress(false);
+      } catch (e) {
+        console.warn('[CACHE] 下载失败 ' + f.path + ':', e && e.message);
+      }
+    }
+    paintAssetProgress(true);
+  }
+
+  for (const f of files) {
+    try {
+      const blob = await _zpAssetDB.get(f.path);
+      if (blob && blob.size > 0) {
+        _zpBlobURLs[f.path] = URL.createObjectURL(blob);
+      }
+    } catch (e) {}
+  }
+
+  try {
+    const validPaths = new Set(files.map(f => f.path));
+    const existingKeys = await _zpAssetDB.keys();
+    for (const key of existingKeys) {
+      if (!validPaths.has(key)) {
+        await _zpAssetDB.del(key);
+        console.log('[CACHE] 清理孤儿 ' + key);
+      }
+    }
+  } catch (e) {}
+
+  console.log('[CACHE] 就绪，' + Object.keys(_zpBlobURLs).length + ' 个资源已转 blob URL');
+}
+
+// Hook fetch：命中缓存则走 blob URL
+(function hookFetchForCache() {
+  if (window.__zpCacheFetchHooked) return;
+  window.__zpCacheFetchHooked = true;
+  const _orig = window.fetch;
+  window.fetch = function(input, init) {
+    let url = '';
+    if (typeof input === 'string') url = input;
+    else if (input && input.url) url = input.url;
+    const norm = _zpNormURL(url);
+    const blobURL = norm ? _zpBlobURLs[norm] : null;
+    if (blobURL) {
+      if (typeof input === 'string') return _orig.call(this, blobURL, init);
+      if (input && input.url) {
+        try { return _orig.call(this, new Request(blobURL, input), init); }
+        catch (e) { return _orig.call(this, blobURL, init); }
+      }
+    }
+    return _orig.call(this, input, init);
+  };
+})();
+
+// Hook img.src：命中缓存则走 blob URL
+(function hookImgSrcForCache() {
+  if (window.__zpCacheImgHooked) return;
+  window.__zpCacheImgHooked = true;
+  const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  if (!desc || !desc.set) return;
+  Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get: desc.get,
+    set(value) {
+      try {
+        const norm = _zpNormURL(value);
+        if (norm && _zpBlobURLs[norm]) value = _zpBlobURLs[norm];
+      } catch (e) {}
+      return desc.set.call(this, value);
+    }
+  });
+})();
+/* ==================== [ZCACHE END] ==================== */
+
 async function init() {
   window.__ZP_BOOT_STATE__ = {};
   try { window.__ZP_BOOT_STAGE__ = 'cdn-select'; } catch (e) {}
   try { await pickFastestCDN(); window.__ZP_BOOT_STATE__.cdn = true; } catch (e) { console.warn('[CDN] 测速失败', e); window.__ZP_BOOT_STATE__.cdn = false; }
+  try { window.__ZP_BOOT_STAGE__ = 'precache'; } catch (e) {}
+  setLoading(3, '检查资源缓存…');
+  try { await precacheAssets(); window.__ZP_BOOT_STATE__.precache = true; } catch (e) { console.warn('[CACHE] 预热失败', e); window.__ZP_BOOT_STATE__.precache = false; }
   try { window.__ZP_BOOT_STAGE__ = 'renderer-init'; } catch (e) {}
   const st0 = document.getElementById('loadingStatus');
   if (st0) st0.textContent = '初始化 3D 引擎…';
@@ -4236,7 +4442,7 @@ const DANCE_VIEW_MODE = 2;
 
 // ==================== 动作面板 ====================
 const ACTIONS = [
-  { id: 'dance', name: '脉冲' }
+  { id: 'dance', name: '欢庆跃动' }
 ];
 
 const ActionPanel = (function () {
@@ -4611,7 +4817,7 @@ async function _loadVRMAClips() {
     };
     const clips = {};
 
-    const DANCE_BASE = 'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@863c4c3/animations/';
+    const DANCE_BASE = ASSET_BASE + 'animations/';
     for (const [key, file] of Object.entries(files)) {
       try {
         const baseUrl = (key === 'dance') ? DANCE_BASE : (ASSET_BASE + 'animations/');

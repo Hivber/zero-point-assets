@@ -460,7 +460,7 @@ body>canvas{position:fixed;top:0;left:0}
 
 
 /* ============ 脱离卡死按钮 ============ */
-#unstuckBtn{position:absolute;right:232px;top:16px;width:44px;height:44px;
+#unstuckBtn{position:absolute;right:124px;top:16px;width:44px;height:44px;
   border-radius:50%;background:rgba(180,100,30,.85);
   border:1px solid rgba(255,180,80,.95);color:#fff;font-size:18px;
   pointer-events:auto;cursor:pointer;font-family:inherit;
@@ -468,14 +468,14 @@ body>canvas{position:fixed;top:0;left:0}
   user-select:none;-webkit-user-select:none}
 #unstuckBtn:active{transform:scale(.94);background:rgba(210,130,50,.95)}
 #unstuckBtn.busy{background:rgba(100,100,100,.9);pointer-events:none}
-#orbitBtn{position:absolute;right:286px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,80,120,.8);border:1px solid rgba(120,170,230,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
+#orbitBtn{position:absolute;right:178px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,80,120,.8);border:1px solid rgba(120,170,230,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
 #orbitBtn:active{transform:scale(.94);background:rgba(60,120,180,.95)}
-@media (max-width:700px){#orbitBtn{right:calc(280px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
-#danceBtn{position:absolute;right:340px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,120,80,.8);border:1px solid rgba(120,230,170,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
+@media (max-width:700px){#orbitBtn{right:calc(172px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
+#danceBtn{position:absolute;right:232px;top:16px;width:44px;height:44px;border-radius:50%;background:rgba(40,120,80,.8);border:1px solid rgba(120,230,170,.85);color:#fff;font-size:18px;pointer-events:auto;cursor:pointer;font-family:inherit;z-index:220;touch-action:none}
 #danceBtn:active{transform:scale(.94);background:rgba(60,180,120,.95)}
-@media (max-width:700px){#danceBtn{right:calc(340px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
+@media (max-width:700px){#danceBtn{right:calc(226px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;font-size:16px}}
 @media (max-width:700px){
-  #unstuckBtn{right:calc(220px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
+  #unstuckBtn{right:calc(118px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
 }
 
 

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>玩家登录 · 零点行动</title>
+<style>
+:root{
+  --zp-bg:#030608;
+  --zp-panel:rgba(9,13,15,.94);
+  --zp-panel-deep:rgba(5,8,10,.96);
+  --zp-line:rgba(224,230,226,.14);
+  --zp-line-strong:rgba(228,207,114,.45);
+  --zp-accent:#d9c776;
+  --zp-accent-strong:#f1df82;
+  --zp-red:#e95b45;
+  --zp-text:#edf0ea;
+  --zp-muted:#7c8787;
+  --zp-soft:#aeb7b4;
+}
+*{box-sizing:border-box}
+html,body{
+  width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;
+  background:var(--zp-bg);color:var(--zp-text);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+body{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+          max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background:
+    linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
+    linear-gradient(0deg,rgba(255,255,255,.014) 1px,transparent 1px),
+    radial-gradient(circle at 18% 50%,rgba(222,195,94,.06),transparent 34%),
+    linear-gradient(135deg,#090d0f 0%,#030608 58%,#020304 100%);
+  background-size:64px 64px,64px 64px,100% 100%,100% 100%;
+  opacity:.95;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(circle at 50% 45%,transparent 0,transparent 45%,rgba(0,0,0,.65) 100%);
+}
+.card{
+  position:relative;z-index:1;width:min(720px,96vw);max-height:calc(100dvh - 16px);
+  display:grid;grid-template-columns:minmax(210px,.82fr) minmax(300px,1.18fr);
+  background:var(--zp-panel);border:1px solid var(--zp-line);box-shadow:0 22px 70px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.035);
+  overflow:hidden;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+}
+.card::after{content:"";position:absolute;inset:0;pointer-events:none;border:1px solid rgba(255,255,255,.025)}
+.brand{
+  position:relative;display:flex;flex-direction:column;justify-content:center;padding:24px 24px;
+  background:linear-gradient(180deg,rgba(22,26,25,.72),rgba(6,9,10,.82));
+  border-right:1px solid var(--zp-line);overflow:hidden;
+}
+.brand::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--zp-accent);box-shadow:0 0 12px rgba(218,199,118,.25)}
+.brand::after{content:"";position:absolute;left:16px;right:-28px;bottom:22px;height:1px;background:linear-gradient(90deg,var(--zp-line-strong),transparent);transform:skewX(-28deg)}
+.eyebrow{font-size:8px;letter-spacing:3px;color:#7e8783;text-transform:uppercase}
+.logo{margin-top:7px;font-size:clamp(25px,3.5vw,34px);font-weight:900;letter-spacing:.13em;line-height:1;text-shadow:0 8px 26px rgba(0,0,0,.5)}
+.sub{margin-top:7px;font-size:9px;letter-spacing:4px;color:#7d8887}
+.brand-line{width:110px;height:1px;margin:17px 0 13px;background:linear-gradient(90deg,var(--zp-accent),rgba(217,199,118,.05))}
+.brand-copy{margin:0;color:#9ca6a4;font-size:10px;line-height:1.8;max-width:220px}
+.meta{margin-top:18px;display:flex;gap:7px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid rgba(216,202,135,.22);color:#afb8b4;font-size:7px;letter-spacing:1px}
+.chip i{width:4px;height:4px;border-radius:50%;background:#a8ca78;box-shadow:0 0 7px rgba(168,202,120,.7)}
+.form-panel{min-width:0;padding:18px 21px 15px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(180deg,rgba(11,15,16,.66),rgba(5,8,9,.82))}
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.panel-label{font-size:8px;letter-spacing:2px;color:#6f7979}
+.panel-status{display:flex;align-items:center;gap:5px;font-size:7px;letter-spacing:1px;color:#85908c}
+.panel-status i{width:5px;height:5px;border-radius:50%;background:#9fc26d;box-shadow:0 0 7px rgba(159,194,109,.7)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:11px;border:1px solid rgba(255,255,255,.08);background:#080c0d}
+.tab{min-width:0;border:0;border-bottom:2px solid transparent;background:transparent;color:#6f7978;padding:7px 8px;cursor:pointer;font:700 10px inherit;letter-spacing:1px}
+.tab.active{color:var(--zp-accent-strong);border-bottom-color:var(--zp-accent);background:rgba(218,199,118,.045)}
+h2{margin:0;font-size:18px;letter-spacing:1px;font-weight:800}
+.hint{margin:4px 0 11px;color:#727d7c;font-size:9px;line-height:1.5}
+.row{margin-bottom:8px}.row.hidden{display:none}
+label{display:block;color:#98a29f;font-size:8px;letter-spacing:1px;margin:0 0 4px 1px}
+.input-wrap{position:relative}
+.input-wrap::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:rgba(217,199,118,.28);z-index:1;pointer-events:none}
+input{width:100%;height:35px;border:1px solid #28302f;border-radius:0;padding:7px 9px 7px 12px;background:#070b0c;color:#f4f5f1;outline:none;font:12px inherit;user-select:text;-webkit-user-select:text;-webkit-appearance:none}
+input:focus{border-color:var(--zp-line-strong);box-shadow:0 0 0 1px rgba(217,199,118,.08),inset 0 0 18px rgba(217,199,118,.025)}
+.submit{position:relative;width:100%;min-height:38px;margin-top:2px;padding:8px 12px;border:1px solid rgba(217,199,118,.42);border-radius:0;background:linear-gradient(180deg,rgba(43,46,41,.96),rgba(15,18,17,.98));color:#f3f0e7;font:800 12px inherit;cursor:pointer;letter-spacing:2px;overflow:hidden;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%)}
+.submit::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--zp-accent)}
+.submit::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,rgba(237,220,151,.1),transparent 32%,transparent 74%,rgba(255,255,255,.025))}
+.submit:hover{border-color:rgba(241,223,130,.72);background:linear-gradient(180deg,rgba(52,55,49,.98),rgba(17,20,19,.98))}
+.submit:active{transform:translateY(1px)}.submit:disabled{opacity:.52;cursor:not-allowed}
+.message{min-height:17px;margin-top:6px;text-align:left;font-size:9px;line-height:1.5}.message.bad{color:#ef7661}.message.good{color:#91c77b}
+.foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px;color:#4f5958;font-size:7px;letter-spacing:1px}
+@media (orientation:portrait){
+  .card{width:min(430px,94vw);grid-template-columns:1fr;max-height:calc(100dvh - 16px)}
+  .brand{padding:14px 17px 10px;border-right:0;border-bottom:1px solid var(--zp-line)}
+  .brand-copy,.brand-line,.meta{display:none}.logo{text-align:center;font-size:23px}.eyebrow,.sub{text-align:center}
+  .form-panel{padding:13px 17px 11px}
+}
+@media (max-height:430px) and (orientation:landscape){
+  .card{width:min(760px,97vw)}.brand{padding:16px 19px}.form-panel{padding:12px 19px 9px}
+  .brand-line{margin:11px 0 9px}.brand-copy{font-size:9px}.meta{margin-top:10px}.tabs{margin-bottom:7px}h2{font-size:16px}.hint{margin:3px 0 7px}.row{margin-bottom:5px}input{height:32px;padding:6px 9px 6px 11px}.submit{min-height:34px}.foot{display:none}
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <section class="brand" aria-label="零点行动玩家登录终端">
+    <div class="eyebrow">ZERO POINT / OPERATIONS TERMINAL</div>
+    <div class="logo">零点行动</div>
+    <div class="sub">ZERO POINT ONLINE</div>
+    <div class="brand-line"></div>
+    <p class="brand-copy">玩家登录后即可连接联机行动大厅。<br>横屏界面为主，核心操作集中在当前画面内。</p>
+    <div class="meta">
+      <span class="chip"><i></i> ONLINE SERVICE</span>
+      <span class="chip">VERSION 1.0</span>
+    </div>
+  </section>
+
+  <section class="form-panel">
+    <div class="panel-head">
+      <span class="panel-label">玩家身份验证</span>
+      <span class="panel-status"><i></i> SYSTEM READY</span>
+    </div>
+
+    <div class="tabs">
+      <button id="tabLogin" class="tab active" type="button">登录</button>
+      <button id="tabRegister" class="tab" type="button">注册</button>
+    </div>
+
+    <h2 id="formTitle">欢迎回来，玩家</h2>
+    <div class="hint" id="formHint">使用你的零点行动账号进入行动大厅</div>
+
+    <form id="authForm" autocomplete="on">
+      <div class="row">
+        <label for="username">账号</label>
+        <div class="input-wrap"><input id="username" name="username" autocomplete="username" maxlength="20" required></div>
+      </div>
+      <div class="row">
+        <label for="password">密码</label>
+        <div class="input-wrap"><input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required></div>
+      </div>
+      <div class="row hidden" id="nicknameRow">
+        <label for="nickname">行动昵称</label>
+        <div class="input-wrap"><input id="nickname" name="nickname" maxlength="24" autocomplete="nickname"></div>
+      </div>
+      <button id="submitBtn" class="submit" type="submit">进入行动系统</button>
+      <div id="message" class="message" aria-live="polite"></div>
+    </form>
+
+    <div class="foot"><span>ZERO POINT · OPERATIONS</span><span>玩家终端</span></div>
+  </section>
+</div>
+<script src="/login.js?v=3"></script>
+</body>
+</html>
