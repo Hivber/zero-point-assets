@@ -4173,7 +4173,7 @@ async function _loadVRMAClips() {
       shoot: 'VRMA_04.vrma',
       jump: 'Jump.vrma',
       crouch: 'VRMA_07.vrma',
-      dance: 'dance01.vrma',
+      dance: 'dance02.vrma',
     };
     const clips = {};
 
