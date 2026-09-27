@@ -123,7 +123,6 @@ const CDN_CANDIDATES = [
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   'https://jsd.onmicrosoft.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.osyb.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
 ];
 let ASSET_BASE = CDN_CANDIDATES[0];
 
@@ -2939,23 +2938,56 @@ async function precacheAssets() {
     const totalBytes = needDownload.reduce((s, f) => s + (f.size || 0), 0);
     assetTotalBytes = totalBytes;
     assetLoadedBytes = 0;
-    let doneBytes = 0;
-    for (const f of needDownload) {
-      const curFileSize = f.size || 0;
-      try {
-        const blob = await _zpDownload(ASSET_BASE + f.path, (loaded) => {
-          assetLoadedBytes = doneBytes + Math.min(loaded, curFileSize);
-          paintAssetProgress(false);
-        });
-        if (!blob || blob.size < 1) throw new Error('空文件');
-        await _zpAssetDB.put(f.path, blob);
-        doneBytes += f.size;
-        assetLoadedBytes = doneBytes;
+    const loadedPerFile = new Map();
+
+    // ★ 并发 6 个文件同时下（延迟叠加变延迟重叠）
+    const CONCURRENCY = 6;
+    let cursor = 0;
+    const failed = [];
+
+    async function worker() {
+      while (cursor < needDownload.length) {
+        const f = needDownload[cursor++];
+        const curFileSize = f.size || 0;
+        try {
+          const blob = await _zpDownload(ASSET_BASE + f.path, (loaded) => {
+            loadedPerFile.set(f.path, Math.min(loaded, curFileSize));
+            let sum = 0;
+            for (const v of loadedPerFile.values()) sum += v;
+            assetLoadedBytes = sum;
+            paintAssetProgress(false);
+          });
+          if (!blob || blob.size < 1) throw new Error('空文件');
+          await _zpAssetDB.put(f.path, blob);
+          loadedPerFile.set(f.path, curFileSize);
+        } catch (e) {
+          console.warn('[CACHE] 下载失败 ' + f.path + ':', e && e.message);
+          failed.push(f);
+          loadedPerFile.set(f.path, curFileSize);   // 算已处理，进度条不卡住
+        }
+        let sum = 0;
+        for (const v of loadedPerFile.values()) sum += v;
+        assetLoadedBytes = sum;
         paintAssetProgress(false);
-      } catch (e) {
-        console.warn('[CACHE] 下载失败 ' + f.path + ':', e && e.message);
       }
     }
+
+    const workers = [];
+    for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
+    await Promise.all(workers);
+
+    // 失败文件再串行重试一轮
+    for (const f of failed) {
+      try {
+        const blob = await _zpDownload(ASSET_BASE + f.path, null);
+        if (!blob || blob.size < 1) continue;
+        await _zpAssetDB.put(f.path, blob);
+        console.log('[CACHE] 重试成功 ' + f.path);
+      } catch (e) {
+        console.warn('[CACHE] 重试仍失败 ' + f.path);
+      }
+    }
+
     paintAssetProgress(true);
   }
 
