@@ -4263,8 +4263,10 @@ const ActionPanel = (function () {
     if (canvas) return;
     canvas = document.createElement('canvas');
     canvas.id = 'zpActionPanel';
-    canvas.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;'
-      + 'touch-action:none;pointer-events:auto;user-select:none;-webkit-user-select:none;';
+    canvas.style.cssText = 'position:fixed;inset:0;display:none;'
+      + 'touch-action:none;user-select:none;-webkit-user-select:none;';
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
     document.body.appendChild(canvas);
 
     canvas.addEventListener('touchstart', _onTouch, { passive: false });
@@ -4419,12 +4421,16 @@ const ActionPanel = (function () {
     _init();
     _resize();
     visible = true;
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
     canvas.style.display = 'block';
+    window.__ZP_PANEL_OPEN__ = true;
     _render();
   }
   function hide() {
     visible = false;
     if (canvas) canvas.style.display = 'none';
+    window.__ZP_PANEL_OPEN__ = false;
   }
   function toggle() { visible ? hide() : show(); }
 
@@ -5456,6 +5462,7 @@ const touchRoles = new Map();
 const touchLookRef = new Map();
 const fireIds = new Set();
 function roleAt(cx, cy) {
+  if (window.__ZP_PANEL_OPEN__) return null;
   const el = document.elementFromPoint(cx, cy);
   if (el) {
     if (el.closest('#fireBtn')) return 'fire';
@@ -5509,6 +5516,7 @@ function setupTouch() {
   }
 
   document.addEventListener('touchstart', (e) => {
+    if (window.__ZP_PANEL_OPEN__) return;
     if (touchLayoutEditing) return;
     if (!state.playing) return;
     for (const t of e.changedTouches) {
@@ -5541,6 +5549,7 @@ function setupTouch() {
   }, { passive: false });
 
   document.addEventListener('touchmove', (e) => {
+    if (window.__ZP_PANEL_OPEN__) return;
     for (const t of e.changedTouches) {
       const role = touchRoles.get(t.identifier);
       if (!role) continue;
@@ -5553,6 +5562,7 @@ function setupTouch() {
   }, { passive: false });
 
   const endHandler = (e) => {
+    if (window.__ZP_PANEL_OPEN__) return;
     for (const t of e.changedTouches) {
       const role = touchRoles.get(t.identifier);
       if (role === 'joy') resetJoy();
