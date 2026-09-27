@@ -119,13 +119,13 @@ function paintAssetProgress(force) {
 
 // ===== 多 CDN 自动择优 =====
 const CDN_CANDIDATES = [
+  'https://cdn.osyb.cn/gh/Hivber/zero-point-assets@main/',
+  'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@main/',
+  'https://cdn.jsdelivr.net.cn/gh/Hivber/zero-point-assets@main/',
+  'https://jsd.onmicrosoft.cn/gh/Hivber/zero-point-assets@main/',
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
   'https://fastly.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
   'https://gcore.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-  'https://testingcf.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-  'https://quantil.jsdelivr.net/gh/Hivber/zero-point-assets@main/',
-  'https://jsd.cdn.zzko.cn/gh/Hivber/zero-point-assets@main/',
-  'https://cdn.statically.io/gh/Hivber/zero-point-assets/main/',
 ];
 let ASSET_BASE = CDN_CANDIDATES[0];
 
