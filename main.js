@@ -118,7 +118,7 @@ function paintAssetProgress(force) {
 })();
 
 // ===== 多 CDN 自动择优 =====
-const CDN_HASH = 'f30f87e';
+const CDN_HASH = 'f1a69b2';
 const CDN_CANDIDATES = [
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
@@ -131,7 +131,7 @@ async function _probeOne(base, timeoutMs) {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    const r = await fetch(base + 'models/XGeBGFQxYg.glb?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal });
+    const r = await fetch(base + 'ping.txt?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal });
     clearTimeout(timer);
     if (!r.ok) return Infinity;
     await r.text();
@@ -154,7 +154,7 @@ async function pickFastestCDN() {
 
   const start = performance.now();
   const results = await Promise.all(
-    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 5000) }))
+    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 3000) }))
   );
   results.sort((a, b) => a.ms - b.ms);
   const best = results[0];
@@ -2815,257 +2815,10 @@ init().then(() => {
   try { reportClientError({ message: detail, stack, source: 'boot.init' }); } catch (reportErr) {}
 });
 
-
-/* ==================== [ZCACHE] 资源本地缓存 + 热更新 ==================== */
-const _zpAssetDB = (() => {
-  const DB_NAME = 'zp_assets_v1';
-  const DB_VER = 1;
-  const STORE = 'files';
-  let _dbp = null;
-  function open() {
-    if (_dbp) return _dbp;
-    _dbp = new Promise((res, rej) => {
-      const req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-      };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => { _dbp = null; rej(req.error); };
-      req.onblocked = () => { _dbp = null; rej(new Error('IDB blocked')); };
-    });
-    return _dbp;
-  }
-  async function put(key, blob) {
-    const db = await open();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(blob, key);
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
-    });
-  }
-  async function get(key) {
-    const db = await open();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(key);
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-    });
-  }
-  async function keys() {
-    const db = await open();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).getAllKeys();
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-    });
-  }
-  async function del(key) {
-    const db = await open();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(key);
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
-    });
-  }
-  return { put, get, keys, del };
-})();
-
-const _zpBlobURLs = Object.create(null);
-
-function _zpNormURL(u) {
-  if (!u) return '';
-  try {
-    let s = String(u).split('#')[0].split('?')[0];
-    // 从 URL 里提取 models/... animations/... textures/... sounds/... 的尾部
-    const m = s.match(/\/(models|animations|textures|sounds)\/(.+)$/);
-    if (m) return m[1] + '/' + m[2];
-    return '';
-  } catch (e) { return ''; }
-}
-
-function _zpDownload(url, onProgress) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.responseType = 'blob';
-    xhr.timeout = 90000;
-    if (onProgress) {
-      xhr.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(e.loaded, e.total);
-      };
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
-      else reject(new Error('HTTP ' + xhr.status));
-    };
-    xhr.onerror = () => reject(new Error('network'));
-    xhr.ontimeout = () => reject(new Error('timeout'));
-    xhr.send();
-  });
-}
-
-async function precacheAssets() {
-  let manifest = null;
-  try {
-    const r = await fetch('/api/manifest', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    manifest = await r.json();
-    if (!manifest.ok || !Array.isArray(manifest.files)) throw new Error('manifest 格式错误');
-  } catch (e) {
-    console.warn('[CACHE] manifest 拉取失败，跳过缓存:', e && e.message);
-    return;
-  }
-
-  const files = manifest.files;
-  const needDownload = [];
-  for (const f of files) {
-    try {
-      const cached = await _zpAssetDB.get(f.path);
-      if (!cached || cached.size !== f.size) needDownload.push(f);
-    } catch (e) {
-      needDownload.push(f);
-    }
-  }
-
-  console.log('[CACHE] ' + (files.length - needDownload.length) + '/' + files.length + ' 命中，需下载 ' + needDownload.length);
-
-  // [DISABLED] 不再下载到 IndexedDB，直接让浏览器 HTTP 缓存处理
-  const __skipDownload = true;
-  if (!__skipDownload && needDownload.length > 0) {
-    const totalBytes = needDownload.reduce((s, f) => s + (f.size || 0), 0);
-    assetTotalBytes = totalBytes;
-    assetLoadedBytes = 0;
-    const loadedPerFile = new Map();
-
-    // ★ 并发 6 个文件同时下（延迟叠加变延迟重叠）
-    const CONCURRENCY = 6;
-    let cursor = 0;
-    const failed = [];
-
-    async function worker() {
-      while (cursor < needDownload.length) {
-        const f = needDownload[cursor++];
-        const curFileSize = f.size || 0;
-        try {
-          const blob = await _zpDownload(ASSET_BASE + f.path, (loaded) => {
-            loadedPerFile.set(f.path, Math.min(loaded, curFileSize));
-            let sum = 0;
-            for (const v of loadedPerFile.values()) sum += v;
-            assetLoadedBytes = sum;
-            paintAssetProgress(false);
-          });
-          if (!blob || blob.size < 1) throw new Error('空文件');
-          await _zpAssetDB.put(f.path, blob);
-          loadedPerFile.set(f.path, curFileSize);
-        } catch (e) {
-          console.warn('[CACHE] 下载失败 ' + f.path + ':', e && e.message);
-          failed.push(f);
-          loadedPerFile.set(f.path, curFileSize);   // 算已处理，进度条不卡住
-        }
-        let sum = 0;
-        for (const v of loadedPerFile.values()) sum += v;
-        assetLoadedBytes = sum;
-        paintAssetProgress(false);
-      }
-    }
-
-    const workers = [];
-    for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
-    await Promise.all(workers);
-
-    // 失败文件再串行重试一轮
-    for (const f of failed) {
-      try {
-        const blob = await _zpDownload(ASSET_BASE + f.path, null);
-        if (!blob || blob.size < 1) continue;
-        await _zpAssetDB.put(f.path, blob);
-        console.log('[CACHE] 重试成功 ' + f.path);
-      } catch (e) {
-        console.warn('[CACHE] 重试仍失败 ' + f.path);
-      }
-    }
-
-    paintAssetProgress(true);
-  }
-
-  // [DISABLED] blob URL 层已禁用（内存翻倍导致卡顿）
-  // CDN 返回 immutable，浏览器 HTTP 缓存自己工作
-  // for (const f of files) {
-  //   const blob = await _zpAssetDB.get(f.path);
-  //   if (blob && blob.size > 0) {
-  //     _zpBlobURLs[f.path] = URL.createObjectURL(blob);
-  //   }
-  // }
-
-  try {
-    const validPaths = new Set(files.map(f => f.path));
-    const existingKeys = await _zpAssetDB.keys();
-    for (const key of existingKeys) {
-      if (!validPaths.has(key)) {
-        await _zpAssetDB.del(key);
-        console.log('[CACHE] 清理孤儿 ' + key);
-      }
-    }
-  } catch (e) {}
-
-  console.log('[CACHE] 就绪，' + Object.keys(_zpBlobURLs).length + ' 个资源已转 blob URL');
-}
-
-// Hook fetch：命中缓存则走 blob URL
-(function hookFetchForCache() {
-  if (window.__zpCacheFetchHooked) return;
-  window.__zpCacheFetchHooked = true;
-  const _orig = window.fetch;
-  window.fetch = function(input, init) {
-    let url = '';
-    if (typeof input === 'string') url = input;
-    else if (input && input.url) url = input.url;
-    const norm = _zpNormURL(url);
-    const blobURL = norm ? _zpBlobURLs[norm] : null;
-    if (blobURL) {
-      if (typeof input === 'string') return _orig.call(this, blobURL, init);
-      if (input && input.url) {
-        try { return _orig.call(this, new Request(blobURL, input), init); }
-        catch (e) { return _orig.call(this, blobURL, init); }
-      }
-    }
-    return _orig.call(this, input, init);
-  };
-})();
-
-// Hook img.src：命中缓存则走 blob URL
-(function hookImgSrcForCache() {
-  if (window.__zpCacheImgHooked) return;
-  window.__zpCacheImgHooked = true;
-  const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-  if (!desc || !desc.set) return;
-  Object.defineProperty(HTMLImageElement.prototype, 'src', {
-    configurable: true,
-    enumerable: desc.enumerable,
-    get: desc.get,
-    set(value) {
-      try {
-        const norm = _zpNormURL(value);
-        if (norm && _zpBlobURLs[norm]) value = _zpBlobURLs[norm];
-      } catch (e) {}
-      return desc.set.call(this, value);
-    }
-  });
-})();
-/* ==================== [ZCACHE END] ==================== */
-
 async function init() {
   window.__ZP_BOOT_STATE__ = {};
   try { window.__ZP_BOOT_STAGE__ = 'cdn-select'; } catch (e) {}
   try { await pickFastestCDN(); window.__ZP_BOOT_STATE__.cdn = true; } catch (e) { console.warn('[CDN] 测速失败', e); window.__ZP_BOOT_STATE__.cdn = false; }
-  try { window.__ZP_BOOT_STAGE__ = 'precache'; } catch (e) {}
-  setLoading(3, '检查资源缓存…');
-  try { await precacheAssets(); window.__ZP_BOOT_STATE__.precache = true; } catch (e) { console.warn('[CACHE] 预热失败', e); window.__ZP_BOOT_STATE__.precache = false; }
   try { window.__ZP_BOOT_STAGE__ = 'renderer-init'; } catch (e) {}
   const st0 = document.getElementById('loadingStatus');
   if (st0) st0.textContent = '初始化 3D 引擎…';
@@ -6829,6 +6582,20 @@ let lastC4BeepSec = -1;
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  // 菜单里不渲染 3D（DOM 菜单不需要），只保持场景"活着"
+  if (!state.playing) {
+    const now = performance.now();
+    if (!loop._lastMenuRender || now - loop._lastMenuRender > 200) {
+      loop._lastMenuRender = now;
+      if (playerVRM) playerVRM.update(0);
+      try {
+        if (composer && currentQuality === 'ultraHi') composer.render();
+        else renderer.render(scene, camera);
+      } catch (e) {}
+    }
+    return;
+  }
 
   if (state.playing) {
     state.shootCd = Math.max(0, state.shootCd - dt);
