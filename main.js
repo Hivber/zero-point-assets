@@ -4002,7 +4002,8 @@ function startDance() {
       'dancing=' + state.dancing + ' jumping=' + player._jumping + '\n' +
       'playerVRM=' + !!playerVRM + '\n' +
       '_vrmaClips=' + (clips ? JSON.stringify(clips) : 'null') + '\n' +
-      'hasDance=' + !!(_vrmaClips && _vrmaClips.dance);
+      'hasDance=' + !!(_vrmaClips && _vrmaClips.dance) + '\n' +
+      'errors=' + JSON.stringify(window.__ZP_VRMA_ERR__ || {});
     setTimeout(() => { if (dbg && dbg.parentNode) dbg.remove(); }, 8000);
   } catch(e) {}
   if (!state.playing || !state.alive || state.orbit) return;
@@ -4160,6 +4161,8 @@ function _getMixer(vrm) {
   return mixer;
 }
 
+window.__ZP_VRMA_ERR__ = window.__ZP_VRMA_ERR__ || {};
+
 async function _loadVRMAClips() {
   if (_vrmaClips) return _vrmaClips;
   if (_vrmaLoading) return _vrmaLoading;
@@ -4173,7 +4176,7 @@ async function _loadVRMAClips() {
       shoot: 'VRMA_04.vrma',
       jump: 'Jump.vrma',
       crouch: 'VRMA_07.vrma',
-      dance: 'd_a7f3c9e2.bin',
+      dance: 'dance_v2.bin',
     };
     const clips = {};
 
@@ -4186,7 +4189,9 @@ async function _loadVRMAClips() {
         if (animations && animations.length) clips[key] = animations[0];
         else console.warn('[VRMA] 无动画数据:', file);
       } catch (e) {
-        console.warn('[VRMA] 加载失败:', file, e?.message || e);
+        const msg = (e && (e.message || e.type)) ? String(e.message || e.type) : String(e);
+        window.__ZP_VRMA_ERR__[key] = msg;
+        console.warn('[VRMA] 加载失败:', file, msg);
       }
     }
 
