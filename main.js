@@ -2934,7 +2934,9 @@ async function precacheAssets() {
 
   console.log('[CACHE] ' + (files.length - needDownload.length) + '/' + files.length + ' 命中，需下载 ' + needDownload.length);
 
-  if (needDownload.length > 0) {
+  // [DISABLED] 不再下载到 IndexedDB，直接让浏览器 HTTP 缓存处理
+  const __skipDownload = true;
+  if (!__skipDownload && needDownload.length > 0) {
     const totalBytes = needDownload.reduce((s, f) => s + (f.size || 0), 0);
     assetTotalBytes = totalBytes;
     assetLoadedBytes = 0;
@@ -2991,14 +2993,14 @@ async function precacheAssets() {
     paintAssetProgress(true);
   }
 
-  for (const f of files) {
-    try {
-      const blob = await _zpAssetDB.get(f.path);
-      if (blob && blob.size > 0) {
-        _zpBlobURLs[f.path] = URL.createObjectURL(blob);
-      }
-    } catch (e) {}
-  }
+  // [DISABLED] blob URL 层已禁用（内存翻倍导致卡顿）
+  // CDN 返回 immutable，浏览器 HTTP 缓存自己工作
+  // for (const f of files) {
+  //   const blob = await _zpAssetDB.get(f.path);
+  //   if (blob && blob.size > 0) {
+  //     _zpBlobURLs[f.path] = URL.createObjectURL(blob);
+  //   }
+  // }
 
   try {
     const validPaths = new Set(files.map(f => f.path));
