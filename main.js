@@ -5981,6 +5981,41 @@ function mobileHudTouchOpacity(id) {
   return Number.isFinite(n) ? Math.max(0.2, Math.min(1, n)) : 1;
 }
 
+function mobileHudDrawKillCounter(r) {
+  if (!r) return;
+  const c = MOBILE_HUD.ctx;
+  const n = state.killCount | 0;
+  const prefix = '击杀 ';
+  const numStr = String(n);
+  c.font = '600 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  const prefixW = c.measureText(prefix).width;
+  c.font = '700 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  const numW = c.measureText(numStr).width;
+  const padX = 12, h = 22;
+  const w = Math.max(56, prefixW + numW + padX * 2);
+  const x = r.cx - w / 2;
+  const y = r.cy - h / 2;
+  c.save();
+  // 直角半透明底
+  c.fillStyle = 'rgba(28, 32, 38, 0.72)';
+  c.fillRect(x, y, w, h);
+  // 直角描边
+  c.strokeStyle = 'rgba(150, 170, 190, 0.22)';
+  c.lineWidth = 1;
+  c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  // 文字
+  c.textAlign = 'left';
+  c.textBaseline = 'middle';
+  const startX = r.cx - (prefixW + numW) / 2;
+  c.font = '600 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  c.fillStyle = 'rgba(232, 236, 240, 0.95)';
+  c.fillText(prefix, startX, r.cy);
+  c.font = '700 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  c.fillStyle = '#ffcc33';
+  c.fillText(numStr, startX + prefixW, r.cy);
+  c.restore();
+}
+
 function mobileHudDrawPlantSprite(r) {
   if (!r) return;
   const c = MOBILE_HUD.ctx;
@@ -6030,6 +6065,7 @@ function mobileHudSpriteSignature(id) {
   else if (id==='plantBtn') dynamic=`p:${plantButtonState.holding?1:0}:${Math.round((plantButtonState.progress||0)*30)}`;
   else if (id==='optBtn') dynamic=`o:${optimizeMode?1:0}`;
   else if (id==='danceBtn') dynamic=`d:${state.dancing?1:0}`;
+  else if (id==='killsBox') dynamic=`k:${state.killCount|0}`;
   const selected = touchLayoutEditing ? (getTouchWorkingSelected()?.id || '') : '';
   return `${visible}|${x}|${dynamic}|e:${selected}`;
 }
@@ -6068,6 +6104,7 @@ function mobileHudDrawSpriteById(id) {
 
   mobileHudDrawSprite(id,(r)=>{
     const op=mobileHudTouchOpacity(id);
+    if (id==='killsBox') { mobileHudDrawKillCounter(r); return; }
     if (id==='joystick') { mobileHudDrawJoystick(r); return; }
     if (id==='plantBtn') { mobileHudDrawPlantSprite(r); return; }
     const isGameplay = ['fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn'].includes(id);
@@ -6097,7 +6134,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','orbitBtn','danceBtn','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','danceBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
@@ -6423,8 +6460,8 @@ function updateAmmoUI() {
   if (r) r.textContent = '∞';
 }
 function updateKillsUI() {
-  const k = document.getElementById('killCount');
-  if (k) k.textContent = state.killCount;
+  invalidateMobileHudCache();
+  if (isTouch && typeof drawMobileHud === 'function') drawMobileHud(true);
 }
 function flashDamage() {
   const el = document.getElementById('damageFlash');
