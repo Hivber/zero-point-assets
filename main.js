@@ -4180,10 +4180,12 @@ async function _loadVRMAClips() {
     };
     const clips = {};
 
+    const DANCE_BASE = 'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@863c4c3/animations/';
     for (const [key, file] of Object.entries(files)) {
       try {
+        const baseUrl = (key === 'dance') ? DANCE_BASE : (ASSET_BASE + 'animations/');
         const gltf = await new Promise((resolve, reject) =>
-          loader.load(ASSET_BASE + 'animations/' + file, resolve, undefined, reject)
+          loader.load(baseUrl + file, resolve, undefined, reject)
         );
         const animations = gltf.userData.vrmAnimations;
         if (animations && animations.length) clips[key] = animations[0];
