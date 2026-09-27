@@ -118,7 +118,7 @@ function paintAssetProgress(force) {
 })();
 
 // ===== 多 CDN 自动择优 =====
-const CDN_HASH = 'f1a69b2';
+const CDN_HASH = 'f30f87e';
 const CDN_CANDIDATES = [
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
