@@ -2574,11 +2574,8 @@ const _vrmBufferCache = new Map();  // url → Promise<ArrayBuffer>
 
 function _fetchVRMBufferCached(url) {
   if (_vrmBufferCache.has(url)) return _vrmBufferCache.get(url);
-  const p = fetch(url, { cache: 'force-cache' }).then(r => {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.arrayBuffer();
-  });
-  // 失败时清缓存，允许下次重试
+  // no-store + byteLength 校验 + 3 次重试，避免命中半截缓存
+  const p = _fetchVRMBuffer(url, 3, 20000).then(({ buf }) => buf);
   p.catch(() => _vrmBufferCache.delete(url));
   _vrmBufferCache.set(url, p);
   return p;
@@ -2612,6 +2609,7 @@ async function loadOtherVRM(attempt) {
     return vrm;
   } catch (e) {
     console.warn('[VRM-OTHER] 加载失败 第 ' + attempt + ' 次:', e && e.message ? e.message : e);
+    try { _vrmBufferCache.delete(vrmUrl); } catch (err) {}
     if (attempt < 4) {
       await new Promise(r => setTimeout(r, 800 * attempt));
       return loadOtherVRM(attempt + 1);
