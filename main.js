@@ -18,6 +18,10 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
   PROTOCOL_VERSION, CLIENT_VERSION, RESOURCE_VERSION,
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
@@ -326,10 +330,32 @@ function applyQualitySetting(key) {
   try { if (bokehPass) { bokehPass.enabled = __isUltra; qlog('[MAX] 景深 ' + __isUltra); } } catch (e) {}
   // 运动模糊
   try { if (afterimagePass) { afterimagePass.enabled = __isUltra; qlog('[MAX] 运动模糊 ' + __isUltra); } } catch (e) {}
-  // SSR
-  try { if (ssrPass) { ssrPass.enabled = __isUltra; qlog('[MAX] SSR ' + __isUltra); } } catch (e) {}
+  // SSR（光追：屏幕空间反射）
+  try {
+    if (ssrPass) {
+      ssrPass.enabled = __isUltra;
+      if (__isUltra && typeof ssrPass.opacity === 'number') ssrPass.opacity = 0.6;
+      qlog('[RT] SSR ' + __isUltra);
+    }
+  } catch (e) {}
+  // 光追：地面镜面（仅顶尖画质）
+  try {
+    if (__isUltra) {
+      if (!groundMirror) createGroundMirror();
+      if (groundMirror) groundMirror.visible = true;
+    } else {
+      if (groundMirror) groundMirror.visible = false;
+    }
+    qlog('[RT] 地面镜面 ' + __isUltra);
+  } catch (e) { console.warn('[RT] 切换失败', e); }
   // GTAO
   try { if (gtaoPass) { gtaoPass.enabled = __isUltra; qlog('[MAX] GTAO ' + __isUltra); } } catch (e) {}
+  // God Ray 体积光
+  try { if (godRayPass) { godRayPass.enabled = __isUltra; godRayPass.uniforms.uEnabled.value = __isUltra ? 1 : 0; qlog('[RT] GodRay ' + __isUltra); } } catch (e) {}
+  // SMAA 抗锯齿
+  try { if (smaaPass) { smaaPass.enabled = __isUltra; qlog('[RT] SMAA ' + __isUltra); } } catch (e) {}
+  // Lensflare 镜头光晕
+  try { if (lensflareLight) { lensflareLight.visible = __isUltra; qlog('[RT] Lensflare ' + __isUltra); } } catch (e) {}
 
   currentQuality = key;
   try { localStorage.setItem(QUALITY_STORAGE, key); } catch (e) {}
@@ -386,8 +412,63 @@ function closeQualityPanel() {
   if (panel) panel.classList.add('hidden');
 }
 
+function detectDeviceTier() {
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return { allowUltra: false, reason: '无 WebGL 支持' };
+
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+    const rLower = renderer.toLowerCase();
+
+    // 软件渲染直接拒绝
+    if (/swiftshader|llvmpipe|software|microsoft basic/i.test(renderer)) {
+      return { allowUltra: false, reason: '软件渲染' };
+    }
+
+    // 内存
+    const mem = Number(navigator.deviceMemory) || 4;
+    if (mem < 4) return { allowUltra: false, reason: '内存 ' + mem + 'GB' };
+
+    // CPU 核心
+    const cores = Number(navigator.hardwareConcurrency) || 4;
+    if (cores < 4) return { allowUltra: false, reason: 'CPU 仅 ' + cores + ' 核' };
+
+    // GPU 型号识别
+    const isHigh = /adreno.*(7\d\d|8\d\d)|mali-g(7\d|8\d)|apple.*gpu|apple.*m\d|immortalis/i.test(renderer);
+    const isLow  = /adreno.*[2-5]\d\d|mali-[4t]|powervr|intel.*(hd|uhd)/i.test(renderer);
+
+    if (isLow) return { allowUltra: false, reason: 'GPU 性能不足' };
+    if (isHigh) return { allowUltra: true, reason: 'GPU: ' + renderer.slice(0, 40) };
+
+    // 未知型号：按屏幕像素量保守判断
+    const dpr = window.devicePixelRatio || 1;
+    const px = window.innerWidth * window.innerHeight * dpr * dpr;
+    if (px > 4500000) return { allowUltra: false, reason: '分辨率过高' };
+
+    // 未知但不太差的设备，允许尝试
+    return { allowUltra: true, reason: '未识别，放行' };
+  } catch (e) {
+    return { allowUltra: false, reason: '检测异常' };
+  }
+}
+
 function buildQualityPanel() {
   if (document.getElementById('zpQualityPanel')) return;
+
+  // ===== 设备性能检测 =====
+  window.__ZP_DEVICE_TIER__ = window.__ZP_DEVICE_TIER__ || detectDeviceTier();
+  const __tier = window.__ZP_DEVICE_TIER__;
+  const __ultraLocked = !__tier.allowUltra;
+  console.log('[TIER] 顶尖画质' + (__ultraLocked ? '已锁定' : '可用') + ' - ' + __tier.reason);
+
+  // 如果当前保存的是 ultraHi 但设备不允许，强制回退
+  if (__ultraLocked && currentQuality === 'ultraHi') {
+    currentQuality = 'high';
+    try { localStorage.setItem(QUALITY_STORAGE, 'high'); } catch (e) {}
+    try { applyQualitySetting('high'); } catch (e) {}
+  }
 
   // --- 齿轮按钮 ---
   const gear = document.createElement('div');
@@ -425,10 +506,15 @@ function buildQualityPanel() {
   html += '<div style="font-size:10px;color:#7a7f8c;letter-spacing:1.5px;margin-bottom:6px;">画质档位</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px;">';
   for (const k of QUALITY_ORDER) {
-    html += '<div data-q="' + k + '" style="padding:8px 2px;text-align:center;font-size:11px;'
+    const __locked = (k === 'ultraHi') && __ultraLocked;
+    const __extra = __locked
+      ? 'opacity:0.35;cursor:not-allowed;filter:grayscale(1);'
+      : 'cursor:pointer;';
+    const __tag = __locked ? '<br><span style="font-size:8px;color:#ff6666;">设备不支持</span>' : '';
+    html += '<div data-q="' + k + '"' + (__locked ? ' data-locked="1"' : '') + ' style="padding:8px 2px;text-align:center;font-size:11px;'
       + 'font-weight:700;color:#d8dae0;background:rgba(30,34,42,.7);'
-      + 'border:1px solid rgba(120,128,140,.35);border-radius:6px;cursor:pointer;'
-      + 'transition:all .15s;user-select:none;">' + QUALITY_PRESETS[k].label + '</div>';
+      + 'border:1px solid rgba(120,128,140,.35);border-radius:6px;'
+      + 'transition:all .15s;user-select:none;' + __extra + '">' + QUALITY_PRESETS[k].label + __tag + '</div>';
   }
   html += '</div>';
 
@@ -466,7 +552,13 @@ function buildQualityPanel() {
   panel.addEventListener('click', (e) => { if (e.target === panel) closeQualityPanel(); });
   for (const k of QUALITY_ORDER) {
     panel.querySelector('[data-q="' + k + '"]').addEventListener('click', (e) => {
-      e.stopPropagation(); applyQualitySetting(k);
+      e.stopPropagation();
+      if (k === 'ultraHi' && __ultraLocked) {
+        const msg = '设备性能不足，无法开启顶尖画质\n\n原因：' + __tier.reason;
+        try { alert(msg); } catch (err) {}
+        return;
+      }
+      applyQualitySetting(k);
     });
   }
   for (const k of RES_ORDER) {
@@ -582,7 +674,13 @@ let explosionLights = [];
 const __zpMaxGfx = true;
 let ssaoPass = null;
 let gtaoPass = null;
+let smaaPass = null;
+let lensflare = null;
+let lensflareLight = null;
+let godRayPass = null;
+let _sunVec3 = null;
 let outputPass = null;
+let groundMirror = null;  // 光追：地面镜面
 let playerVRM = null;
 let gunModel = null;
 let c4HandModel = null;
@@ -723,7 +821,7 @@ const TOUCH_LAYOUT_META = Object.freeze({
   plantBtn:   { label: '安放 C4' },
   viewBtn:    { label: '切换视角' },
   orbitBtn:   { label: '观赏' },
-  danceBtn:   { label: '跳舞' },
+  danceBtn:   { label: '动作' },
 });
 let touchLayouts = { portrait: {}, landscape: {} };
 let touchLayoutWorking = null;
@@ -1116,6 +1214,7 @@ const state = {
   crouching: false,
   orbit: null,
   dancing: false,
+  currentAction: 'dance',
   danceExit: null,
 };
 
@@ -2722,8 +2821,9 @@ init().then(() => {
 });
 
 async function init() {
+  window.__ZP_BOOT_STATE__ = {};
   try { window.__ZP_BOOT_STAGE__ = 'cdn-select'; } catch (e) {}
-  try { await pickFastestCDN(); } catch (e) { console.warn('[CDN] 测速失败', e); }
+  try { await pickFastestCDN(); window.__ZP_BOOT_STATE__.cdn = true; } catch (e) { console.warn('[CDN] 测速失败', e); window.__ZP_BOOT_STATE__.cdn = false; }
   try { window.__ZP_BOOT_STAGE__ = 'renderer-init'; } catch (e) {}
   const st0 = document.getElementById('loadingStatus');
   if (st0) st0.textContent = '初始化 3D 引擎…';
@@ -2759,6 +2859,8 @@ async function init() {
     if (afterimagePass) afterimagePass.setSize(window.innerWidth, window.innerHeight);
     if (ssrPass) ssrPass.setSize(window.innerWidth, window.innerHeight);
     if (gtaoPass) gtaoPass.setSize(window.innerWidth, window.innerHeight);
+    if (smaaPass) smaaPass.setSize(window.innerWidth, window.innerHeight);
+    if (godRayPass) godRayPass.setSize(window.innerWidth, window.innerHeight);
   });
 
   try { window.__ZP_BOOT_STAGE__ = 'runtime-config'; } catch (e) {}
@@ -2775,22 +2877,29 @@ async function init() {
   }
   try { window.__ZP_BOOT_STAGE__ = 'websocket'; } catch (e) {}
   setLoading(8, '连接服务器…');
-  await connectServer();
+  try { await connectServer(); window.__ZP_BOOT_STATE__.websocket = true; } catch (e) { console.warn('[WS] 连接失败', e); window.__ZP_BOOT_STATE__.websocket = false; }
   try { window.__ZP_BOOT_STAGE__ = 'runtime-data'; } catch (e) {}
   await refreshRuntimeData();
 
   try { window.__ZP_BOOT_STAGE__ = 'hdr'; } catch (e) {}
   setLoading(15, '加载 HDR…');
-  await loadHDR();
+  try { await loadHDR(); window.__ZP_BOOT_STATE__.hdr = true; } catch (e) { window.__ZP_BOOT_STATE__.hdr = false; }
   try { window.__ZP_BOOT_STAGE__ = 'textures'; } catch (e) {}
   setLoading(25, '加载贴图…');
-  const tex = await loadAllTextures();
+  let tex = null;
+  try { tex = await loadAllTextures(); window.__ZP_BOOT_STATE__.textures = true; } catch (e) { window.__ZP_BOOT_STATE__.textures = false; }
   try { window.__ZP_BOOT_STAGE__ = 'map'; } catch (e) {}
   setLoading(45, '构建地图…');
-  if (serverMapData && serverMapData.type === 'terrain') {
-    buildTerrainFromServer(serverMapData.terrain);
-  } else {
-    buildMap(tex);
+  try {
+    if (serverMapData && serverMapData.type === 'terrain') {
+      buildTerrainFromServer(serverMapData.terrain);
+    } else {
+      buildMap(tex);
+    }
+    window.__ZP_BOOT_STATE__.map = true;
+  } catch (e) {
+    console.warn('[MAP] 构建失败', e);
+    window.__ZP_BOOT_STATE__.map = false;
   }
   try { window.__ZP_BOOT_STAGE__ = 'gun'; } catch (e) {}
   setLoading(58, '加载枪械…');
@@ -2844,8 +2953,21 @@ async function init() {
   try { applyResolutionSetting(currentResolution); } catch (e) { console.warn('[RES] init apply failed', e); }
 
   setTimeout(() => {
+    // ===== 启动完整性门 =====
+    const _fail = Object.entries(window.__ZP_BOOT_STATE__ || {})
+      .filter(([k, v]) => v === false)
+      .map(([k]) => k);
+    if (_fail.length > 0) {
+      const st = document.getElementById('loadingStatus');
+      if (st) st.innerHTML = '启动不完整：<b style="color:#ff6666;">' + _fail.join(' / ') + '</b><br><span style="font-size:11px;color:#8aa8c8;">请重启 APP 或检查网络</span>';
+      const bar = document.getElementById('loadingBar');
+      if (bar) bar.style.background = '#ff4444';
+      console.warn('[BOOT-GATE] 拒绝进入菜单，缺失:', _fail, window.__ZP_BOOT_STATE__);
+      return;
+    }
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('menu').classList.remove('hidden');
+    console.log('[BOOT-GATE] 通过，状态:', window.__ZP_BOOT_STATE__);
   }, 300);
 
   // ===== 后期处理 Pass 状态上报（诊断用） =====
@@ -2881,6 +3003,9 @@ const ColorGradeShader = {
     uSaturation: { value: 1.06 },
     uTint: { value: null },          // 运行时设 Vector3
     uVignette: { value: 0.30 },
+    uChroma: { value: 0.0035 },
+    uGrain: { value: 0.05 },
+    uTime: { value: 0 },
   },
   vertexShader: [
     'varying vec2 vUv;',
@@ -2895,9 +3020,18 @@ const ColorGradeShader = {
     'uniform float uSaturation;',
     'uniform vec3 uTint;',
     'uniform float uVignette;',
+    'uniform float uChroma;',
+    'uniform float uGrain;',
+    'uniform float uTime;',
     'varying vec2 vUv;',
+    'float _hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}',
     'void main() {',
     '  vec4 c = texture2D(tDiffuse, vUv);',
+    '  vec2 dC = vUv - 0.5;',
+    '  float r2c = dot(dC, dC);',
+    '  vec2 offC = dC * r2c * uChroma;',
+    '  c.r = texture2D(tDiffuse, vUv + offC).r;',
+    '  c.b = texture2D(tDiffuse, vUv - offC).b;',
     '  c.rgb = (c.rgb - 0.5) * uContrast + 0.5;',
     '  float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));',
     '  c.rgb = mix(vec3(l), c.rgb, uSaturation);',
@@ -2905,12 +3039,86 @@ const ColorGradeShader = {
     '  vec2 d = vUv - 0.5;',
     '  float v = 1.0 - dot(d, d) * uVignette;',
     '  c.rgb *= v;',
+    '  float g = _hash(vUv * 900.0 + uTime) - 0.5;',
+    '  c.rgb += g * uGrain;',
     '  gl_FragColor = c;',
     '}',
   ].join('\n'),
 };
 
 // GodRayShader 已整体移除
+
+function createGroundMirror() {
+  if (groundMirror) return;
+  const gs = (serverMapData && serverMapData.world && serverMapData.world.ground_size) || 200;
+  try {
+    const geo = new THREE.PlaneGeometry(gs, gs);
+    groundMirror = new Reflector(geo, {
+      clipBias: 0.003,
+      textureWidth: 512,
+      textureHeight: 512,
+      color: 0x8899aa,
+    });
+    groundMirror.rotation.x = -Math.PI / 2;
+    groundMirror.position.y = 0.02;
+    groundMirror.visible = false;
+    groundMirror.userData.isGroundMirror = true;
+    groundMirror.renderOrder = -1;
+    scene.add(groundMirror);
+    console.log('[RT] 地面镜面已创建，尺寸 ' + gs);
+  } catch (e) {
+    console.warn('[RT] 地面镜面失败:', e);
+    groundMirror = null;
+  }
+}
+
+const GodRayShader = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uSunPos:    { value: new THREE.Vector2(0.5, 0.3) },
+    uIntensity: { value: 1.0 },
+    uDecay:     { value: 0.96 },
+    uWeight:    { value: 0.35 },
+    uDensity:   { value: 0.9 },
+    uExposure:  { value: 0.35 },
+    uEnabled:   { value: 0.0 },
+  },
+  vertexShader: [
+    'varying vec2 vUv;',
+    'void main() {',
+    '  vUv = uv;',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+    '}',
+  ].join('\n'),
+  fragmentShader: [
+    'uniform sampler2D tDiffuse;',
+    'uniform vec2 uSunPos;',
+    'uniform float uIntensity;',
+    'uniform float uDecay;',
+    'uniform float uWeight;',
+    'uniform float uDensity;',
+    'uniform float uExposure;',
+    'uniform float uEnabled;',
+    'varying vec2 vUv;',
+    'void main() {',
+    '  vec4 base = texture2D(tDiffuse, vUv);',
+    '  if (uEnabled < 0.5) { gl_FragColor = base; return; }',
+    '  vec2 delta = (vUv - uSunPos) * uDensity / 30.0;',
+    '  vec2 coord = vUv;',
+    '  float decay = 1.0;',
+    '  vec3 accum = vec3(0.0);',
+    '  for (int i = 0; i < 30; i++) {',
+    '    coord -= delta;',
+    '    vec3 col = texture2D(tDiffuse, coord).rgb;',
+    '    col *= decay * uWeight;',
+    '    accum += col;',
+    '    decay *= uDecay;',
+    '  }',
+    '  accum *= uExposure * uIntensity;',
+    '  gl_FragColor = vec4(base.rgb + accum, base.a);',
+    '}',
+  ].join('\n'),
+};
 
 function setupPostProcessing() {
   try {
@@ -2973,19 +3181,61 @@ function setupPostProcessing() {
       qlog('[MAX] SSRPass OK');
     } catch (e) { qlog('[MAX] SSRPass 失败', e); }
 
-    // GTAO（如果 three 版本支持）
+    // GTAO
     try {
-      if (typeof GTAOPass === 'function') {
-        gtaoPass = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
-        gtaoPass.output = GTAOPass.OUTPUT.Default;
-        gtaoPass.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.0, thickness: 1.0, scale: 1.0 });
-        gtaoPass.enabled = false;
-        composer.addPass(gtaoPass);
-        qlog('[MAX] GTAOPass OK');
-      } else {
-        qlog('[MAX] GTAOPass 不存在（three 版本太旧）');
-      }
-    } catch (e) { qlog('[MAX] GTAOPass 失败', e); }
+      gtaoPass = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
+      gtaoPass.output = GTAOPass.OUTPUT.Default;
+      gtaoPass.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.0, thickness: 1.0, scale: 1.0 });
+      gtaoPass.enabled = false;
+      composer.addPass(gtaoPass);
+      qlog('[RT] GTAOPass OK');
+    } catch (e) { qlog('[RT] GTAOPass 失败', e); }
+
+    // God Rays
+    try {
+      godRayPass = new ShaderPass(GodRayShader);
+      godRayPass.enabled = false;
+      composer.addPass(godRayPass);
+      qlog('[RT] GodRayPass OK');
+    } catch (e) { qlog('[RT] GodRayPass 失败', e); }
+
+    // SMAA
+    try {
+      smaaPass = new SMAAPass(window.innerWidth, window.innerHeight);
+      smaaPass.enabled = false;
+      composer.addPass(smaaPass);
+      qlog('[RT] SMAAPass OK');
+    } catch (e) { qlog('[RT] SMAAPass 失败', e); }
+
+    // Lensflare
+    try {
+      lensflare = new Lensflare();
+      const _mkFlareTex = () => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        g.addColorStop(0, 'rgba(255,255,255,1)');
+        g.addColorStop(0.3, 'rgba(255,255,240,0.65)');
+        g.addColorStop(1, 'rgba(255,255,240,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+        return new THREE.CanvasTexture(c);
+      };
+      const _t = _mkFlareTex();
+      lensflare.addElement(new LensflareElement(_t, 500, 0.0, 0xffffee));
+      lensflare.addElement(new LensflareElement(_t, 60,  0.6, 0x00aaff));
+      lensflare.addElement(new LensflareElement(_t, 70,  0.7, 0xaaffaa));
+      lensflare.addElement(new LensflareElement(_t, 120, 0.9, 0xffaa00));
+      lensflare.addElement(new LensflareElement(_t, 70,  1.0, 0xffffff));
+
+      lensflareLight = new THREE.PointLight(0xffffff, 0.8, 800, 2);
+      lensflareLight.position.set(0, 90, -80);
+      lensflareLight.add(lensflare);
+      lensflareLight.visible = false;
+      scene.add(lensflareLight);
+      _sunVec3 = new THREE.Vector3(0, 90, -80);
+      qlog('[RT] Lensflare OK');
+    } catch (e) { qlog('[RT] Lensflare 失败', e); }
 
     composer.addPass(outputPass);
 
@@ -3986,6 +4236,203 @@ function startOrbit() {
 const DANCE_CAM_LERP_MS = 600;
 const DANCE_VIEW_MODE = 2;
 
+// ==================== 动作面板 ====================
+const ACTIONS = [
+  { id: 'dance', name: '脉冲' }
+];
+
+const ActionPanel = (function () {
+  let canvas = null;
+  let ctx = null;
+  let visible = false;
+  let items = [];
+  let dpr = 1;
+
+  function _rr(c, x, y, w, h, r) {
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  function _init() {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'zpActionPanel';
+    canvas.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;'
+      + 'touch-action:none;pointer-events:auto;user-select:none;-webkit-user-select:none;';
+    document.body.appendChild(canvas);
+
+    canvas.addEventListener('touchstart', _onTouch, { passive: false });
+    canvas.addEventListener('click', _onClick);
+
+    window.addEventListener('resize', () => {
+      if (visible) { _resize(); _render(); }
+    });
+  }
+
+  function _resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const W = window.innerWidth, H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _render() {
+    const W = window.innerWidth, H = window.innerHeight;
+
+    // 全屏半透明灰
+    ctx.fillStyle = 'rgba(18, 20, 24, 0.72)';
+    ctx.fillRect(0, 0, W, H);
+
+    // 卡片尺寸
+    const rowH = 62;
+    const cardW = Math.min(W * 0.82, 400);
+    const cardH = 96 + ACTIONS.length * rowH + 16;
+    const cardX = (W - cardW) / 2;
+    const cardY = (H - cardH) / 2;
+
+    // 卡片
+    ctx.fillStyle = 'rgba(28, 32, 38, 0.94)';
+    _rr(ctx, cardX, cardY, cardW, cardH, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 标题 "动作"
+    ctx.fillStyle = 'rgba(232, 236, 240, 0.95)';
+    ctx.font = '700 15px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('动作', cardX + 20, cardY + 34);
+
+    // 关闭按钮 X
+    const closeCx = cardX + cardW - 26;
+    const closeCy = cardY + 34;
+    ctx.strokeStyle = 'rgba(200, 205, 212, 0.65)';
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(closeCx - 7, closeCy - 7); ctx.lineTo(closeCx + 7, closeCy + 7);
+    ctx.moveTo(closeCx + 7, closeCy - 7); ctx.lineTo(closeCx - 7, closeCy + 7);
+    ctx.stroke();
+
+    items = [{ x: closeCx - 18, y: closeCy - 18, w: 36, h: 36, action: '__close' }];
+
+    // 分隔线
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cardX + 14, cardY + 56);
+    ctx.lineTo(cardX + cardW - 14, cardY + 56);
+    ctx.stroke();
+
+    // 动作行
+    let y = cardY + 68;
+    for (const act of ACTIONS) {
+      const rowX = cardX + 14;
+      const rowW = cardW - 28;
+      const rowHeight = rowH - 10;
+      const isActive = state.currentAction === act.id;
+
+      // 行背景
+      ctx.fillStyle = isActive ? 'rgba(80, 160, 240, 0.16)' : 'rgba(255, 255, 255, 0.045)';
+      _rr(ctx, rowX, y, rowW, rowHeight, 10);
+      ctx.fill();
+
+      // 图标圆底
+      const iconCx = rowX + 32;
+      const iconCy = y + rowHeight / 2;
+      ctx.beginPath();
+      ctx.arc(iconCx, iconCy, 16, 0, Math.PI * 2);
+      ctx.fillStyle = isActive ? 'rgba(90, 170, 250, 0.32)' : 'rgba(120, 140, 160, 0.22)';
+      ctx.fill();
+
+      // 脉冲波形图标
+      ctx.strokeStyle = isActive ? '#8ac8ff' : '#c0c8d0';
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(iconCx - 10, iconCy);
+      ctx.lineTo(iconCx - 4, iconCy);
+      ctx.lineTo(iconCx - 1, iconCy - 8);
+      ctx.lineTo(iconCx + 3, iconCy + 8);
+      ctx.lineTo(iconCx + 6, iconCy);
+      ctx.lineTo(iconCx + 10, iconCy);
+      ctx.stroke();
+
+      // 名字
+      ctx.fillStyle = '#e8ecf0';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(act.name, rowX + 62, iconCy);
+
+      items.push({ x: rowX, y, w: rowW, h: rowHeight, action: act.id });
+      y += rowH;
+    }
+  }
+
+  function _hit(cx, cy) {
+    for (const it of items) {
+      if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
+        if (it.action === '__close') { hide(); return; }
+        _play(it.action);
+        hide();
+        return;
+      }
+    }
+    hide();
+  }
+
+  function _play(id) {
+    const act = ACTIONS.find(a => a.id === id);
+    if (!act) return;
+    if (state.dancing) stopDance();
+    setTimeout(() => {
+      state.currentAction = act.id;
+      startDance();
+    }, 40);
+  }
+
+  function _onTouch(e) {
+    e.preventDefault(); e.stopPropagation();
+    const t = e.changedTouches[0];
+    _hit(t.clientX, t.clientY);
+  }
+  function _onClick(e) {
+    e.preventDefault(); e.stopPropagation();
+    _hit(e.clientX, e.clientY);
+  }
+
+  function show() {
+    _init();
+    _resize();
+    visible = true;
+    canvas.style.display = 'block';
+    _render();
+  }
+  function hide() {
+    visible = false;
+    if (canvas) canvas.style.display = 'none';
+  }
+  function toggle() { visible ? hide() : show(); }
+
+  return { show, hide, toggle, isVisible: () => visible };
+})();
+
+
+
 function startDance() {
   if (!state.playing || !state.alive || state.orbit) return;
   if (state.dancing) return;
@@ -3997,7 +4444,7 @@ function startDance() {
   state.thirdPerson = true;
   updateViewModelVisible();
   updateViewButton();
-  if (playerVRM) setVRMAnimation(playerVRM, 'dance', null);
+  if (playerVRM) setVRMAnimation(playerVRM, state.currentAction || 'dance', null);
   sendMsg({ type: 'action', action: 'dance', data: { enabled: true } });
 }
 
@@ -5086,7 +5533,7 @@ function setupTouch() {
       else if (role === 'gyroBtn') toggleGyro();
       else if (role === 'unstuckBtn') sendUnstuck();
       else if (role === 'orbitBtn') startOrbit();
-      else if (role === 'danceBtn') { if (state.dancing) stopDance(); else startDance(); }
+      else if (role === 'danceBtn') { ActionPanel.toggle(); }
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
@@ -5606,7 +6053,7 @@ function mobileHudDrawSpriteById(id) {
     crouchBtn:state.crouching?'起身':'蹲下',
     switchBtn:state.holding==='c4'?'切枪':'装备',
     orbitBtn:'观赏',
-    danceBtn:state.dancing?'停止':'跳舞'
+    danceBtn:'动作'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -6184,6 +6631,19 @@ function loop() {
   }
 
   if (playerVRM) playerVRM.update(dt);
+
+  // 顶尖画质：更新 God Ray 太阳屏幕坐标 + 色差颗粒时间
+  if (currentQuality === 'ultraHi') {
+    try {
+      if (godRayPass && godRayPass.enabled && _sunVec3) {
+        const v = _sunVec3.clone().project(camera);
+        godRayPass.uniforms.uSunPos.value.set((v.x + 1) / 2, (v.y + 1) / 2);
+      }
+      if (colorGradePass && colorGradePass.enabled) {
+        colorGradePass.uniforms.uTime.value = performance.now() / 1000.0;
+      }
+    } catch (e) {}
+  }
 
   // __zpFixBloom：只有顶尖档走后期处理，其他档直接渲染（避免 Bloom 过曝）
   const __zpFixBloom = true;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>零点行动 · ZERO POINT 3D</title>
 <script>window.__ZP_WS_URL__='ws://hk-8.qwq.fan:36905';</script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/style.css?v=dancefinal">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/style.css?v=act01">
 <style id="__ZP_CANVAS_FIX__">
 body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !important; }
 </style>
@@ -269,7 +269,7 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
   try {
     window.__ZP_BOOT_STAGE__ = 'module-import';
     show('正在加载前端模块…');
-    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=dancefinal');
+    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@main/main.js?v=act01');
     await Promise.race([
       importPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),
