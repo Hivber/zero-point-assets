@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>零点行动 · ZERO POINT 3D</title>
 <script>window.__ZP_WS_URL__='ws://160.30.231.176:49375';</script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/style.css?v=killcanvas">
+<link rel="stylesheet" href="/style.css?v=killcanvas">
 <style id="__ZP_CANVAS_FIX__">
 body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !important; }
 </style>
@@ -228,15 +228,15 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
 <div id="switchBtn" class="hidden touch-layout-item" data-touch-layout-id="switchBtn" data-touch-layout-label="切换武器">💣</div>
 <div id="dropBtn" class="hidden">⬇️</div>
 
-<script src="https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/vendor/howler/howler.min.js"></script>
+<script src="/vendor/howler/howler.min.js"></script>
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdmirror.com/npm/three@0.160.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdmirror.com/npm/three@0.160.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/vendor/three-vrm/lib/three-vrm.module.js",
-    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/vendor/three-vrm-animation/lib/three-vrm-animation.module.js",
-    "three-mesh-bvh": "https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/vendor/three-mesh-bvh/build/index.module.js"
+    "@pixiv/three-vrm": "/vendor/three-vrm/lib/three-vrm.module.js",
+    "@pixiv/three-vrm-animation": "/vendor/three-vrm-animation/lib/three-vrm-animation.module.js",
+    "three-mesh-bvh": "/vendor/three-mesh-bvh/build/index.module.js"
   }
 }
 </script>
@@ -267,7 +267,7 @@ body > canvas:not(#mobileHudCanvas):not(#minimap) { pointer-events: none !import
   try {
     window.__ZP_BOOT_STAGE__ = 'module-import';
     show('正在加载前端模块…');
-    const importPromise = import('https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@f30f87e/main.js?v=allcdn01');
+    const importPromise = import('/main.js?v=zcache01');
     await Promise.race([
       importPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('前端模块加载超时（可能是 Three.js / VRM CDN 无法访问）')), 12000)),
