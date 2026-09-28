@@ -7426,6 +7426,8 @@ function setTouchControlsVisible(v) {
   if (view) view.classList.toggle('hidden', !v || !visibleForUser('viewBtn'));
   const mic = document.getElementById('micBtn');
   if (mic) mic.classList.toggle('hidden', !v);
+  const chat = document.getElementById('zpChatBtn');
+  if (chat) chat.classList.toggle('hidden', !v);
   setMobileCanvasHudMode(!!v || touchLayoutEditing);
   resizeMobileHudCanvas();
 }
