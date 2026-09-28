@@ -18,7 +18,6 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
@@ -2202,9 +2201,6 @@ function openSocket(resetCandidates = false) {
           player.vy = 0;
           player.onGround = true;
         }
-        // 延迟合批装饰物（等坐标下发+加载完成）
-        setTimeout(() => { try { mergeStaticDecorations(); } catch (e) { console.warn('[MERGE]', e); } }, 8000);
-
         if (initialConnectResolve) {
           const r = initialConnectResolve;
           initialConnectResolve = null;
@@ -3153,85 +3149,6 @@ function updateDistanceCull() {
   _cullArr(corpses, px, pz, farSq);
 }
 /* ==================== [ZCULL END] ==================== */
-
-/* ==================== [MERGE] 装饰物合批 ==================== */
-// 把同类型的多个装饰物实例合并成少数几个大 mesh，draw call 从 ~116 砍到 ~8。
-// 合并后距离剔除对这些装饰物失效（因为它们变成了一个整体），
-// 但 draw call 已经少到不需要剔除。
-let __decorMerged = false;
-
-function mergeStaticDecorations() {
-  if (__decorMerged) return;
-  __decorMerged = true;
-
-  const types = [
-    { name: 'wall_clocks',   arr: wallClocks },
-    { name: 'potted_plants', arr: pottedPlants },
-    { name: 'vintage_radios',arr: vintageRadios },
-    { name: 'gas_tanks',     arr: gasTanks },
-    { name: 'barrels',       arr: barrels },
-    { name: 'quiver_trees',  arr: quiverTrees },
-    { name: 'decorative_c4', arr: decorativeC4Nodes },
-  ];
-
-  for (const t of types) {
-    if (!t.arr || t.arr.length < 2) continue;
-
-    // 收集所有实例的 geometry（世界矩阵变换后），按材质分组
-    const byMat = new Map();
-    for (const item of t.arr) {
-      const root = (item && item.mesh) ? item.mesh : item;
-      if (!root) continue;
-      try { root.updateMatrixWorld(true); } catch (e) { continue; }
-      root.traverse(child => {
-        if (!child.isMesh || !child.geometry) return;
-        let geo;
-        try { geo = child.geometry.clone(); } catch (e) { return; }
-        try { geo.applyMatrix4(child.matrixWorld); } catch (e) { return; }
-        const mat = child.material;
-        if (!byMat.has(mat)) byMat.set(mat, []);
-        byMat.get(mat).push(geo);
-      });
-    }
-
-    if (!byMat.size) continue;
-
-    const merged = new THREE.Group();
-    merged.name = 'merged_' + t.name;
-    let okGroups = 0;
-    for (const [mat, geos] of byMat) {
-      let g = null;
-      try {
-        g = BufferGeometryUtils.mergeGeometries(geos, false);
-      } catch (e) {
-        console.warn('[MERGE] ' + t.name + ' merge 失败:', e && e.message);
-      }
-      if (!g) { continue; }
-      const mesh = new THREE.Mesh(g, mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = true;
-      merged.add(mesh);
-      okGroups++;
-    }
-
-    // 移除原有的所有实例
-    const oldCount = t.arr.length;
-    for (const item of t.arr) {
-      const root = (item && item.mesh) ? item.mesh : item;
-      if (root && root.parent) root.parent.remove(root);
-    }
-    t.arr.length = 0;
-
-    if (okGroups > 0) {
-      scene.add(merged);
-      console.log('[MERGE] ' + t.name + ': ' + oldCount + ' 实例 → ' + okGroups + ' 合并 mesh');
-    }
-  }
-
-  console.log('[MERGE] 装饰物合批完成');
-}
-/* ==================== [MERGE END] ==================== */
 
 /* ==================== [B] 初始化 ==================== */
 
