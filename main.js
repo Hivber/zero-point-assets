@@ -2329,8 +2329,8 @@ function handleServerMsg(msg) {
     return;
   }
   if (msg.type === 'killed') {
-    const killerName = msg.killer === myId ? '我' : '玩家' + msg.killer;
-    const victimName = msg.victim === myId ? '我' : '玩家' + msg.victim;
+    const killerName = msg.killer === myId ? '我' : (msg.killer === 9999 ? '靶子' : '玩家' + msg.killer);
+    const victimName = msg.victim === myId ? '我' : (msg.victim === 9999 ? '靶子' : '玩家' + msg.victim);
     addKillFeed(killerName, msg.weapon || 'AK47', victimName, msg.killer === myId);
     if (msg.killer === myId) {
       state.killCount++;
@@ -2642,11 +2642,11 @@ function createOtherPlayer(id) {
   const ctx = cv.getContext('2d');
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = (id === 9999) ? '#ffcc33' : '#fff';
   ctx.font = 'bold 36px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('玩家' + id, 128, 32);
+  ctx.fillText((id === 9999) ? '靶子' : ('玩家' + id), 128, 32);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
