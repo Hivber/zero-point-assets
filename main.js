@@ -4674,6 +4674,167 @@ const ActionPanel = (function () {
 
 
 
+
+/* ==================== [MIC] 麦克风按钮 + 语音面板 ==================== */
+const MicPanel = (function () {
+  let canvas = null, ctx = null, visible = false;
+  let items = [], dpr = 1, stage = 'ask';
+
+  function _init() {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'zpMicPanel';
+    canvas.style.cssText = 'position:fixed;inset:0;display:none;'
+      + 'touch-action:none;user-select:none;-webkit-user-select:none;';
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
+    document.body.appendChild(canvas);
+    canvas.addEventListener('touchstart', _onTouch, { passive: false });
+    canvas.addEventListener('click', _onClick);
+    window.addEventListener('resize', () => { if (visible) { _resize(); _render(); } });
+  }
+
+  function _resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const W = window.innerWidth, H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _render() {
+    const W = window.innerWidth, H = window.innerHeight;
+    ctx.fillStyle = 'rgba(18, 20, 24, 0.45)';
+    ctx.fillRect(0, 0, W, H);
+
+    const rowH = 62;
+    const cardW = Math.min(W * 0.82, 400);
+    const rows = (stage === 'ask') ? 3 : 2;
+    const cardH = 56 + rows * rowH + 8;
+    const cardX = (W - cardW) / 2;
+    const cardY = (H - cardH) / 2;
+
+    ctx.fillStyle = 'rgba(28, 32, 38, 0.72)';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(232, 236, 240, 0.95)';
+    ctx.font = '700 15px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('语音', cardX + 20, cardY + 34);
+
+    const closeCx = cardX + cardW - 26, closeCy = cardY + 34;
+    ctx.strokeStyle = 'rgba(200, 205, 212, 0.65)';
+    ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(closeCx - 7, closeCy - 7); ctx.lineTo(closeCx + 7, closeCy + 7);
+    ctx.moveTo(closeCx + 7, closeCy - 7); ctx.lineTo(closeCx - 7, closeCy + 7);
+    ctx.stroke();
+
+    items = [{ x: closeCx - 18, y: closeCy - 18, w: 36, h: 36, action: '__close' }];
+
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cardX + 14, cardY + 56);
+    ctx.lineTo(cardX + cardW - 14, cardY + 56);
+    ctx.stroke();
+
+    let y = cardY + 60;
+    ctx.textBaseline = 'middle';
+
+    if (stage === 'ask') {
+      ctx.fillStyle = '#d8dae0';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('是否使用麦克风？', cardX + 20, y + rowH / 2);
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'allow', '允许');
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'cancel', '取消');
+    } else if (stage === 'connecting') {
+      ctx.fillStyle = '#d8dae0';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('正在连接语音服务器…', cardX + 20, y + rowH / 2);
+    } else if (stage === 'failed') {
+      ctx.fillStyle = '#ff6666';
+      ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('语音服务器连接失败', cardX + 20, y + rowH / 2);
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'close2', '关闭');
+    }
+  }
+
+  function _drawRow(rowX, rowY, rowW, rowH, action, label) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
+    ctx.fillRect(rowX, rowY, rowW, rowH);
+    ctx.fillStyle = '#e8ecf0';
+    ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, rowX + 20, rowY + rowH / 2);
+    items.push({ x: rowX, y: rowY, w: rowW, h: rowH, action });
+  }
+
+  function _hit(cx, cy) {
+    for (const it of items) {
+      if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
+        if (it.action === '__close' || it.action === 'cancel' || it.action === 'close2') { hide(); return; }
+        if (it.action === 'allow') { _connect(); return; }
+      }
+    }
+  }
+
+  function _connect() {
+    stage = 'connecting';
+    _render();
+    setTimeout(() => { if (!visible) return; stage = 'failed'; _render(); }, 1200);
+  }
+
+  function _onTouch(e) { e.preventDefault(); e.stopPropagation(); _hit(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }
+  function _onClick(e) { e.preventDefault(); e.stopPropagation(); _hit(e.clientX, e.clientY); }
+
+  function show() {
+    _init(); _resize();
+    visible = true; stage = 'ask';
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
+    canvas.style.display = 'block';
+    window.__ZP_PANEL_OPEN__ = true;
+    _render();
+  }
+  function hide() {
+    visible = false;
+    if (canvas) canvas.style.display = 'none';
+    window.__ZP_PANEL_OPEN__ = false;
+  }
+  function toggle() { visible ? hide() : show(); }
+  return { show, hide, toggle, isVisible: () => visible };
+})();
+
+(function ensureMicBtn() {
+  if (document.getElementById('micBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'micBtn';
+  btn.setAttribute('aria-label', '语音');
+  btn.textContent = '🎤';
+  btn.style.cssText = 'position:absolute;top:16px;right:286px;width:44px;height:44px;'
+    + 'border-radius:50%;background:transparent;border:none;'
+    + 'color:transparent;font-size:0;pointer-events:auto;cursor:pointer;'
+    + 'z-index:220;touch-action:none;';
+  btn.classList.add('hidden');
+  const hud = document.getElementById('hud');
+  if (hud) hud.appendChild(btn); else document.body.appendChild(btn);
+})();
+
 function startDance() {
   if (!state.playing || !state.alive || state.orbit) return;
   if (state.dancing) return;
@@ -5712,6 +5873,7 @@ function roleAt(cx, cy) {
     if (el.closest('#unstuckBtn')) return 'unstuckBtn';
     if (el.closest('#orbitBtn')) return 'orbitBtn';
     if (el.closest('#danceBtn')) return 'danceBtn';
+    if (el.closest('#micBtn')) return 'micBtn';
     if (el.closest('#joystick')) return 'joy';
     if (el.closest('#touchLayoutHudBtn')) return 'touchLayoutBtn';
     if (el.closest('#keybindPanel')) return 'keybindUI';
@@ -5777,6 +5939,7 @@ function setupTouch() {
       else if (role === 'unstuckBtn') sendUnstuck();
       else if (role === 'orbitBtn') startOrbit();
       else if (role === 'danceBtn') { ActionPanel.toggle(); }
+      else if (role === 'micBtn') { MicPanel.toggle(); }
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
@@ -6154,6 +6317,22 @@ function mobileHudDrawIcon(id, r, opts = {}) {
     c.beginPath(); c.moveTo(cx+s*.06, cy-s*.24); c.lineTo(cx+s*.58, cy-s*.02); c.stroke();
     c.beginPath(); c.moveTo(cx-s*.14, cy+s*.08); c.lineTo(cx-s*.46, cy+s*.62); c.stroke();
     c.beginPath(); c.moveTo(cx+s*.12, cy+s*.26); c.lineTo(cx+s*.38, cy+s*.64); c.stroke();
+  } else if (id === 'micBtn') {
+    c.beginPath();
+    c.moveTo(cx - s*.18, cy - s*.62);
+    c.lineTo(cx - s*.18, cy + s*.05);
+    c.lineTo(cx + s*.18, cy + s*.05);
+    c.lineTo(cx + s*.18, cy - s*.62);
+    c.closePath();
+    c.stroke();
+    c.beginPath();
+    c.moveTo(cx - s*.50, cy - s*.10);
+    c.quadraticCurveTo(cx, cy + s*.55, cx + s*.50, cy - s*.10);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(cx, cy + s*.30); c.lineTo(cx, cy + s*.70);
+    c.moveTo(cx - s*.22, cy + s*.70); c.lineTo(cx + s*.22, cy + s*.70);
+    c.stroke();
   }
   c.restore();
 }
@@ -6300,6 +6479,7 @@ function mobileHudSpriteSignature(id) {
   else if (id==='plantBtn') dynamic=`p:${plantButtonState.holding?1:0}:${Math.round((plantButtonState.progress||0)*30)}`;
   else if (id==='optBtn') dynamic=`o:${optimizeMode?1:0}`;
   else if (id==='danceBtn') dynamic=`d:${state.dancing?1:0}`;
+  else if (id==='micBtn') dynamic=`mc:${MicPanel.isVisible()?1:0}`;
   else if (id==='killsBox') dynamic=`k:${state.killCount|0}`;
   const selected = touchLayoutEditing ? (getTouchWorkingSelected()?.id || '') : '';
   return `${visible}|${x}|${dynamic}|e:${selected}`;
@@ -6318,7 +6498,7 @@ function mobileHudDrawSpriteById(id) {
   const kindById = {
     exitBtn:'red', viewBtn:'blue', gyroBtn:'cyan', optBtn:'gold', unstuckBtn:'gold',
     keybindHudBtn:'utility', touchLayoutHudBtn:'gold', fireBtn:'red', reloadBtn2:'blue',
-    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan'
+    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan', micBtn:'cyan'
   };
   const labels = {
     exitBtn:'退出',
@@ -6334,7 +6514,8 @@ function mobileHudDrawSpriteById(id) {
     crouchBtn:state.crouching?'起身':'蹲下',
     switchBtn:state.holding==='c4'?'切枪':'装备',
     orbitBtn:'观赏',
-    danceBtn:'动作'
+    danceBtn:'动作',
+    micBtn:'语音'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -6369,7 +6550,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','orbitBtn','danceBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','danceBtn','micBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
@@ -6394,6 +6575,8 @@ function setTouchControlsVisible(v) {
   }
   const view = document.getElementById('viewBtn');
   if (view) view.classList.toggle('hidden', !v || !visibleForUser('viewBtn'));
+  const mic = document.getElementById('micBtn');
+  if (mic) mic.classList.toggle('hidden', !v);
   setMobileCanvasHudMode(!!v || touchLayoutEditing);
   resizeMobileHudCanvas();
 }
