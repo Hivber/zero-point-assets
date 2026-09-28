@@ -168,7 +168,7 @@ async function pickFastestCDN() {
 
   const start = performance.now();
   const results = await Promise.all(
-    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 2000) }))
+    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 800) }))
   );
   results.sort((a, b) => a.ms - b.ms);
   const best = results[0];
@@ -2952,7 +2952,7 @@ async function precacheAssets() {
     assetLoadedBytes = 0;
 
     const loadedPerFile = new Map();
-    const CONCURRENCY = 12;
+    const CONCURRENCY = 16;
     let cursor = 0;
     const failed = [];
 
@@ -3071,7 +3071,17 @@ async function precacheAssets() {
 async function init() {
   window.__ZP_BOOT_STATE__ = {};
   try { window.__ZP_BOOT_STAGE__ = 'cdn-select'; } catch (e) {}
-  try { await pickFastestCDN(); window.__ZP_BOOT_STATE__.cdn = true; } catch (e) { console.warn('[CDN] 测速失败', e); window.__ZP_BOOT_STATE__.cdn = false; }
+  setLoading(3, '选择线路…');
+  try {
+    const __pickedCdn = await CDNPicker.show();
+    ASSET_BASE = __pickedCdn;
+    window.__ZP_BOOT_STATE__.cdn = true;
+    console.log('[CDN] 用户选择:', __pickedCdn);
+  } catch (e) {
+    console.warn('[CDN] 用户选择失败，用默认:', e);
+    ASSET_BASE = CDN_CANDIDATES[0];
+    window.__ZP_BOOT_STATE__.cdn = false;
+  }
   try { window.__ZP_BOOT_STAGE__ = 'precache'; } catch (e) {}
   setLoading(3, '检查资源缓存…');
   try { await precacheAssets(); window.__ZP_BOOT_STATE__.precache = true; } catch (e) { console.warn('[CACHE] 预热失败', e); window.__ZP_BOOT_STATE__.precache = false; }
@@ -4975,6 +4985,291 @@ const KillIcon = (function () {
   }
 
   return { flash };
+})();
+
+/* ==================== [CDNPICKER] CDN 手动选择面板 ==================== */
+const CDNPicker = (function () {
+  let canvas = null, ctx = null, dpr = 1;
+  let visible = false;
+  let items = [];
+  const state = new Map();   // url → { status: 'pending'|'done'|'fail', ms }
+  let resolveFn = null;
+  let aborts = [];
+
+  const PROBE_TIMEOUT = 3000;
+
+  function _init() {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'zpCdnPicker';
+    canvas.style.cssText = 'position:fixed;inset:0;display:none;'
+      + 'touch-action:none;user-select:none;-webkit-user-select:none;';
+    canvas.style.setProperty('z-index', '2147483647', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
+    document.body.appendChild(canvas);
+    canvas.addEventListener('touchstart', _onTouch, { passive: false });
+    canvas.addEventListener('click', _onClick);
+    window.addEventListener('resize', () => { if (visible) { _resize(); _render(); } });
+  }
+
+  function _resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const W = window.innerWidth, H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _shortHost(url) {
+    return url.replace(/^https?:\/\//, '').replace(/\/gh\/.*$/, '').replace(/\/$/, '');
+  }
+
+  function _sorted() {
+    return CDN_CANDIDATES.slice().sort((a, b) => {
+      const sa = state.get(a) || { status: 'pending' };
+      const sb = state.get(b) || { status: 'pending' };
+      const rank = s => s.status === 'done' ? 0 : s.status === 'pending' ? 1 : 2;
+      const ra = rank(sa), rb = rank(sb);
+      if (ra !== rb) return ra - rb;
+      if (sa.status === 'done' && sb.status === 'done') return sa.ms - sb.ms;
+      return 0;
+    });
+  }
+
+  function _render() {
+    const W = window.innerWidth, H = window.innerHeight;
+    ctx.fillStyle = 'rgba(10, 12, 16, 0.92)';
+    ctx.fillRect(0, 0, W, H);
+
+    const rowH = 48;
+    const cardW = Math.min(W * 0.92, 520);
+    const listH = CDN_CANDIDATES.length * rowH;
+    const cardH = Math.min(H - 40, 88 + listH + 60);
+    const cardX = (W - cardW) / 2;
+    const cardY = Math.max(20, (H - cardH) / 2);
+
+    ctx.fillStyle = 'rgba(28, 32, 38, 0.98)';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+    // 标题
+    ctx.fillStyle = 'rgba(232, 236, 240, 0.98)';
+    ctx.font = '700 17px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('选择线路', cardX + 20, cardY + 32);
+
+    const doneCount = [...state.values()].filter(s => s.status !== 'pending').length;
+    ctx.fillStyle = 'rgba(140, 150, 165, 0.9)';
+    ctx.font = '400 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText('测速进度 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 20, cardY + 56);
+
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
+    ctx.beginPath();
+    ctx.moveTo(cardX + 14, cardY + 74);
+    ctx.lineTo(cardX + cardW - 14, cardY + 74);
+    ctx.stroke();
+
+    // 列表
+    items = [];
+    let y = cardY + 80;
+    const sorted = _sorted();
+    const maxListH = cardH - 80 - 60;
+    const maxRows = Math.floor(maxListH / rowH);
+    const shown = sorted.slice(0, maxRows);
+
+    for (const url of shown) {
+      const s = state.get(url) || { status: 'pending', ms: null };
+      const rowX = cardX + 14;
+      const rowW = cardW - 28;
+      const rowHeight = rowH - 6;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.fillRect(rowX, y, rowW, rowHeight);
+
+      // 状态指示
+      const dotCx = rowX + 22;
+      const dotCy = y + rowHeight / 2;
+      if (s.status === 'done') {
+        ctx.fillStyle = '#4ade80';
+        ctx.beginPath(); ctx.arc(dotCx, dotCy, 5, 0, Math.PI * 2); ctx.fill();
+      } else if (s.status === 'pending') {
+        ctx.fillStyle = 'rgba(150, 160, 175, 0.6)';
+        ctx.beginPath(); ctx.arc(dotCx, dotCy, 5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(dotCx - 4, dotCy - 4); ctx.lineTo(dotCx + 4, dotCy + 4);
+        ctx.moveTo(dotCx + 4, dotCy - 4); ctx.lineTo(dotCx - 4, dotCy + 4);
+        ctx.stroke();
+      }
+
+      // 域名
+      ctx.fillStyle = 'rgba(232, 236, 240, 0.95)';
+      ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(_shortHost(url), rowX + 42, dotCy);
+
+      // 右侧状态
+      ctx.textAlign = 'right';
+      if (s.status === 'done') {
+        const color = s.ms < 300 ? '#4ade80' : s.ms < 1000 ? '#ffcc33' : '#ff8c42';
+        ctx.fillStyle = color;
+        ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText(s.ms.toFixed(0) + 'ms', rowX + rowW - 16, dotCy);
+      } else if (s.status === 'pending') {
+        ctx.fillStyle = 'rgba(150, 160, 175, 0.7)';
+        ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText('测速中…', rowX + rowW - 16, dotCy);
+      } else {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+        ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText('不可用', rowX + rowW - 16, dotCy);
+      }
+      ctx.textAlign = 'left';
+
+      if (s.status === 'done') {
+        items.push({ x: rowX, y, w: rowW, h: rowHeight, url });
+      }
+      y += rowH;
+    }
+
+    // 底部按钮
+    const btnH = 40;
+    const btnY = cardY + cardH - 14 - btnH;
+    const btnW = Math.min(160, (cardW - 42) / 2);
+    const autoX = cardX + cardW - 14 - btnW;
+    const reX = autoX - 10 - btnW;
+
+    const hasDone = [...state.values()].some(s => s.status === 'done');
+
+    // 重新测速
+    ctx.fillStyle = 'rgba(120, 130, 145, 0.12)';
+    ctx.fillRect(reX, btnY, btnW, btnH);
+    ctx.strokeStyle = 'rgba(120, 130, 145, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(reX, btnY, btnW, btnH);
+    ctx.fillStyle = 'rgba(200, 210, 220, 0.9)';
+    ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('重新测速', reX + btnW / 2, btnY + btnH / 2);
+
+    // 自动选最快
+    ctx.fillStyle = hasDone ? 'rgba(74, 222, 128, 0.18)' : 'rgba(120, 130, 145, 0.12)';
+    ctx.fillRect(autoX, btnY, btnW, btnH);
+    ctx.strokeStyle = hasDone ? 'rgba(74, 222, 128, 0.65)' : 'rgba(120, 130, 145, 0.3)';
+    ctx.strokeRect(autoX, btnY, btnW, btnH);
+    ctx.fillStyle = hasDone ? '#4ade80' : 'rgba(150, 160, 175, 0.5)';
+    ctx.fillText('自动选最快', autoX + btnW / 2, btnY + btnH / 2);
+
+    ctx.textAlign = 'left';
+
+    items.push({ x: reX, y: btnY, w: btnW, h: btnH, action: 'refresh' });
+    if (hasDone) items.push({ x: autoX, y: btnY, w: btnW, h: btnH, action: 'auto' });
+  }
+
+  function _probeOne(base) {
+    const t0 = performance.now();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT);
+    return fetch(base + 'ping.txt?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })
+      .then(r => {
+        clearTimeout(timer);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text().then(() => performance.now() - t0);
+      })
+      .catch(e => {
+        clearTimeout(timer);
+        throw e;
+      });
+  }
+
+  function _startProbe() {
+    // 中断旧的
+    for (const a of aborts) { try { a.abort(); } catch (e) {} }
+    aborts = [];
+    for (const url of CDN_CANDIDATES) {
+      state.set(url, { status: 'pending', ms: null });
+    }
+    _render();
+
+    let redrawScheduled = false;
+    const scheduleRedraw = () => {
+      if (redrawScheduled) return;
+      redrawScheduled = true;
+      requestAnimationFrame(() => {
+        redrawScheduled = false;
+        if (visible) _render();
+      });
+    };
+
+    for (const url of CDN_CANDIDATES) {
+      _probeOne(url)
+        .then(ms => { state.set(url, { status: 'done', ms }); })
+        .catch(() => { state.set(url, { status: 'fail', ms: null }); })
+        .finally(scheduleRedraw);
+    }
+  }
+
+  function _pick(url) {
+    const fn = resolveFn;
+    resolveFn = null;
+    visible = false;
+    if (canvas) canvas.style.display = 'none';
+    window.__ZP_PANEL_OPEN__ = false;
+    if (fn) fn(url);
+  }
+
+  function _autoPick() {
+    let best = null, bestMs = Infinity;
+    for (const url of CDN_CANDIDATES) {
+      const s = state.get(url);
+      if (s && s.status === 'done' && s.ms < bestMs) {
+        bestMs = s.ms;
+        best = url;
+      }
+    }
+    if (best) _pick(best);
+  }
+
+  function _hit(cx, cy) {
+    for (const it of items) {
+      if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
+        if (it.action === 'refresh') { _startProbe(); return; }
+        if (it.action === 'auto') { _autoPick(); return; }
+        if (it.url) { _pick(it.url); return; }
+      }
+    }
+  }
+
+  function _onTouch(e) {
+    e.preventDefault(); e.stopPropagation();
+    const t = e.changedTouches[0];
+    _hit(t.clientX, t.clientY);
+  }
+  function _onClick(e) {
+    e.preventDefault(); e.stopPropagation();
+    _hit(e.clientX, e.clientY);
+  }
+
+  function show() {
+    return new Promise((resolve) => {
+      resolveFn = resolve;
+      _init(); _resize();
+      visible = true;
+      canvas.style.display = 'block';
+      window.__ZP_PANEL_OPEN__ = true;
+      _startProbe();
+    });
+  }
+
+  return { show };
 })();
 
 const MicPanel = (function () {
