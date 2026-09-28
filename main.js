@@ -674,11 +674,17 @@ function applyQualitySetting(key) {
   // Lensflare 镜头光晕
   try { if (lensflareLight) { lensflareLight.visible = __isUltra; qlog('[RT] Lensflare ' + __isUltra); } } catch (e) {}
 
+  const __prevQ = (typeof window.__prevQualityForDpr === 'string') ? window.__prevQualityForDpr : null;
   currentQuality = key;
   try { localStorage.setItem(QUALITY_STORAGE, key); } catch (e) {}
-  // 超流畅档：隐藏装饰物 + 降 DPR
+  // 超流畅档：隐藏装饰物
   try { applyUltraLowMode(key === 'ultra'); } catch (e) {}
-  try { applyResolutionSetting(currentResolution); } catch (e) {}
+  // 只在「切到 ultra」或「从 ultra 切走」时更新 DPR
+  // 其他档位互相切换，DPR 保持不变（避免切档位时突然变清晰/变糊）
+  if (__prevQ !== key && (__prevQ === 'ultra' || key === 'ultra')) {
+    try { applyResolutionSetting(currentResolution); } catch (e) {}
+  }
+  window.__prevQualityForDpr = key;
 
   try {
     // 优化模式已废弃，不再设置
@@ -3527,6 +3533,7 @@ async function init() {
   // 应用保存的画质 + 分辨率
   try { applyQualitySetting(currentQuality); } catch (e) { console.warn('[QUALITY] init apply failed', e); }
   try { applyResolutionSetting(currentResolution); } catch (e) { console.warn('[RES] init apply failed', e); }
+  window.__prevQualityForDpr = currentQuality;
 
   setTimeout(() => {
     // ===== 启动完整性门 =====
