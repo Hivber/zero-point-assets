@@ -3167,7 +3167,11 @@ const ChatPanel = (function () {
     root.style.cssText = 'position:fixed;inset:0;background:rgba(18,20,24,0.45);'
       + 'z-index:2147483646;display:none;align-items:center;justify-content:center;'
       + 'touch-action:none;';
-    root.addEventListener('touchstart', (e) => { if (e.target === root) hide(); });
+    root.addEventListener('touchstart', (e) => { if (e.target === root) { e.preventDefault(); hide(); } }, { passive: false });
+    // 捕获阶段：阻止 root 内所有触摸事件冒泡到 document，避免被游戏触摸系统抢走
+    root.addEventListener('touchstart', (e) => { e.stopPropagation(); }, true);
+    root.addEventListener('touchmove', (e) => { e.stopPropagation(); }, true);
+    root.addEventListener('touchend', (e) => { e.stopPropagation(); }, true);
     root.addEventListener('click', (e) => { if (e.target === root) hide(); });
 
     const card = document.createElement('div');
@@ -3261,6 +3265,7 @@ const ChatPanel = (function () {
   function show() {
     _init();
     visible = true;
+    window.__ZP_PANEL_OPEN__ = true;
     root.style.display = 'flex';
     _render();
     setTimeout(() => inputEl && inputEl.focus(), 100);
@@ -3269,6 +3274,7 @@ const ChatPanel = (function () {
     visible = false;
     if (root) root.style.display = 'none';
     if (inputEl) inputEl.blur();
+    window.__ZP_PANEL_OPEN__ = false;
   }
   function toggle() { visible ? hide() : show(); }
   function isVisible() { return visible; }
