@@ -3251,8 +3251,17 @@ const ChatPanel = (function () {
     if (!inputEl) return;
     const text = inputEl.value.trim();
     if (!text) return;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'chat', content: text }));
+    // 本地立即回显
+    messages.push({ sender: '我', content: text });
+    if (messages.length > MAX_MSGS * 2) messages.shift();
+    _render();
+    // 发送
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'chat', content: text }));
+    } else {
+      messages.push({ sender: '系统', content: '未连接服务器，消息未发送' });
+      _render();
+    }
     inputEl.value = '';
   }
 
