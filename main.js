@@ -534,6 +534,20 @@ function qlog(text) {
   } catch (e) {}
 }
 
+function applyUltraLowMode(on) {
+  const hide = !!on;
+  try { for (const c of wallClocks) if (c && c.mesh) c.mesh.visible = !hide; } catch (e) {}
+  try { for (const p of pottedPlants) if (p && p.mesh) p.mesh.visible = !hide; } catch (e) {}
+  try { for (const r of vintageRadios) if (r && r.mesh) r.mesh.visible = !hide; } catch (e) {}
+  try { for (const t of gasTanks) if (t && t.mesh) t.mesh.visible = !hide; } catch (e) {}
+  try { for (const b of barrels) if (b && b.mesh) b.mesh.visible = !hide; } catch (e) {}
+  try { for (const t of quiverTrees) if (t) t.visible = !hide; } catch (e) {}
+  try { for (const n of decorativeC4Nodes) if (n) n.visible = !hide; } catch (e) {}
+  try { for (const p of pickups) if (p && p.mesh) p.mesh.visible = !hide; } catch (e) {}
+  try { for (const c of corpses) if (c && c.mesh) c.mesh.visible = !hide; } catch (e) {}
+  try { console.error('[ULTRA-LOW] ' + (hide ? 'ON' : 'OFF')); } catch (e) {}
+}
+
 function applyQualitySetting(key) {
   const p = QUALITY_PRESETS[key];
   if (!p || !renderer || !scene) return;
@@ -662,6 +676,9 @@ function applyQualitySetting(key) {
 
   currentQuality = key;
   try { localStorage.setItem(QUALITY_STORAGE, key); } catch (e) {}
+  // 超流畅档：隐藏装饰物 + 降 DPR
+  try { applyUltraLowMode(key === 'ultra'); } catch (e) {}
+  try { applyResolutionSetting(currentResolution); } catch (e) {}
 
   try {
     // 优化模式已废弃，不再设置
@@ -676,8 +693,10 @@ function applyQualitySetting(key) {
 function applyResolutionSetting(key) {
   const r = RES_PRESETS[key];
   if (!r || !renderer) return;
+  let __dpr = Math.min(window.devicePixelRatio || 1, r.dpr);
+  if (typeof currentQuality !== 'undefined' && currentQuality === 'ultra') __dpr *= 0.6;
   try {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r.dpr));
+    renderer.setPixelRatio(__dpr);
     renderer.setSize(window.innerWidth, window.innerHeight);
   } catch (e) { console.warn('[RES] renderer', e); }
 
@@ -3076,6 +3095,11 @@ function updateOtherPlayers(dt) {
     op.lastPos.copy(op.targetPos);
 
     if (!op.vrm) continue;
+
+    if (currentQuality === 'ultra') {
+      const __d2 = op.group.position.distanceToSquared(camera.position);
+      if (__d2 > 225) continue;
+    }
 
     updateVRMAvatarAnimation(op.vrm, {
       jumping: !!op._jumping,
@@ -7653,7 +7677,21 @@ function loop() {
     updateLocalBullets(dt);
     updateImpacts(dt);
     updatePickups(dt);
-    drawMinimap();
+    if (currentQuality === 'ultra') {
+      if (!loop._miniFrame) loop._miniFrame = 0;
+      loop._miniFrame++;
+      if (loop._miniFrame % 4 === 0) drawMinimap();
+      for (const c of wallClocks) if (c && c.mesh && c.mesh.visible) c.mesh.visible = false;
+      for (const p of pottedPlants) if (p && p.mesh && p.mesh.visible) p.mesh.visible = false;
+      for (const r of vintageRadios) if (r && r.mesh && r.mesh.visible) r.mesh.visible = false;
+      for (const t of gasTanks) if (t && t.mesh && t.mesh.visible) t.mesh.visible = false;
+      for (const b of barrels) if (b && b.mesh && b.mesh.visible) b.mesh.visible = false;
+      for (const t of quiverTrees) if (t && t.visible) t.visible = false;
+      for (const n of decorativeC4Nodes) if (n && n.visible) n.visible = false;
+      for (const p of pickups) if (p && p.mesh && p.mesh.visible) p.mesh.visible = false;
+    } else {
+      drawMinimap();
+    }
     drawMobileHud();
 
     const plantBtn = document.getElementById('plantBtn');
