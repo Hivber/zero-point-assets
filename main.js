@@ -4399,13 +4399,13 @@ function spawnQuiverTrees(list) {
     if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) continue;
     const tree = quiverTreePrototype.clone(true);
     tree.position.set(p.x, 0, p.z);
-    tree.scale.setScalar(6.0);
+    tree.scale.setScalar(3.5);
     tree.rotation.y = Math.random() * Math.PI * 2;
     scene.add(tree);
     quiverTrees.push(tree);
     colliders.push({
-      min: new THREE.Vector3(p.x - 1.25, 0, p.z - 1.25),
-      max: new THREE.Vector3(p.x + 1.25, 7.0, p.z + 1.25),
+      min: new THREE.Vector3(p.x - 0.75, 0, p.z - 0.75),
+      max: new THREE.Vector3(p.x + 0.75, 4.0, p.z + 0.75),
       isTree: true,
     });
   }
