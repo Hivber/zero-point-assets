@@ -239,8 +239,10 @@ const CDNPicker = (function () {
 
     const rowH = 48;
     const cardW = Math.min(W * 0.92, 520);
-    const listH = CDN_CANDIDATES.length * rowH;
-    const cardH = Math.min(H - 40, 88 + listH + 60);
+    const N = CDN_CANDIDATES.length;
+    const listH = N * rowH;
+    // 标题区 80 + 列表 + 底部按钮 68，总高不超屏幕
+    const cardH = Math.min(H - 40, 80 + listH + 68);
     const cardX = (W - cardW) / 2;
     const cardY = Math.max(20, (H - cardH) / 2);
 
@@ -268,15 +270,12 @@ const CDNPicker = (function () {
     ctx.lineTo(cardX + cardW - 14, cardY + 74);
     ctx.stroke();
 
-    // 列表
+    // 列表（全部显示，不截断）
     items = [];
     let y = cardY + 80;
     const sorted = _sorted();
-    const maxListH = cardH - 80 - 60;
-    const maxRows = Math.floor(maxListH / rowH);
-    const shown = sorted.slice(0, maxRows);
 
-    for (const url of shown) {
+    for (const url of sorted) {
       const s = state.get(url) || { status: 'pending', ms: null };
       const rowX = cardX + 14;
       const rowW = cardW - 28;
