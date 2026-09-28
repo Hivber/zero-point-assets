@@ -2335,6 +2335,7 @@ function handleServerMsg(msg) {
     if (msg.killer === myId) {
       state.killCount++;
       updateKillsUI();
+      try { KillIcon.flash(); } catch (e) {}
     }
     if (msg.victim === myId) {
       console.log('[CORPSE] killed 收到 victim=me playerVRM=' + !!playerVRM + ' 位置=(' + player.pos.x.toFixed(1) + ',' + player.pos.y.toFixed(1) + ',' + player.pos.z.toFixed(1) + ')');
@@ -4676,6 +4677,291 @@ const ActionPanel = (function () {
 
 
 /* ==================== [MIC] 麦克风按钮 + 语音面板 ==================== */
+/* ==================== [ICONS] 手绘图标库 ==================== */
+const ZpIcons = (function () {
+  function _setup(ctx, s, color) {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1.2, s * 0.08);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+
+  function skull(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.55, cy - s * 0.15);
+    ctx.bezierCurveTo(cx - s * 0.55, cy - s * 0.75, cx + s * 0.55, cy - s * 0.75, cx + s * 0.55, cy - s * 0.15);
+    ctx.lineTo(cx + s * 0.40, cy + s * 0.35);
+    ctx.lineTo(cx - s * 0.40, cy + s * 0.35);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx - s * 0.22, cy - s * 0.15, s * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + s * 0.22, cy - s * 0.15, s * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.20, cy + s * 0.10); ctx.lineTo(cx - s * 0.20, cy + s * 0.35);
+    ctx.moveTo(cx, cy + s * 0.10); ctx.lineTo(cx, cy + s * 0.35);
+    ctx.moveTo(cx + s * 0.20, cy + s * 0.10); ctx.lineTo(cx + s * 0.20, cy + s * 0.35);
+    ctx.stroke();
+  }
+
+  function crosshair(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.75, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.85); ctx.lineTo(cx, cy - s * 0.45);
+    ctx.moveTo(cx, cy + s * 0.45); ctx.lineTo(cx, cy + s * 0.85);
+    ctx.moveTo(cx - s * 0.85, cy); ctx.lineTo(cx - s * 0.45, cy);
+    ctx.moveTo(cx + s * 0.45, cy); ctx.lineTo(cx + s * 0.85, cy);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.10, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function headshot(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.82, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.32, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.95); ctx.lineTo(cx, cy - s * 0.42);
+    ctx.moveTo(cx, cy + s * 0.42); ctx.lineTo(cx, cy + s * 0.95);
+    ctx.moveTo(cx - s * 0.95, cy); ctx.lineTo(cx - s * 0.42, cy);
+    ctx.moveTo(cx + s * 0.42, cy); ctx.lineTo(cx + s * 0.95, cy);
+    ctx.stroke();
+  }
+
+  function rifle(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.90, cy - s * 0.05);
+    ctx.lineTo(cx - s * 0.20, cy - s * 0.05);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(cx - s * 0.35, cy - s * 0.20, s * 0.70, s * 0.30);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.15, cy + s * 0.10);
+    ctx.quadraticCurveTo(cx - s * 0.25, cy + s * 0.60, cx + s * 0.05, cy + s * 0.65);
+    ctx.quadraticCurveTo(cx + s * 0.20, cy + s * 0.55, cx + s * 0.15, cy + s * 0.10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + s * 0.35, cy - s * 0.05);
+    ctx.lineTo(cx + s * 0.85, cy + s * 0.05);
+    ctx.lineTo(cx + s * 0.85, cy + s * 0.25);
+    ctx.lineTo(cx + s * 0.35, cy + s * 0.10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + s * 0.05, cy + s * 0.10); ctx.lineTo(cx + s * 0.10, cy + s * 0.35);
+    ctx.stroke();
+  }
+
+  function knife(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.85);
+    ctx.lineTo(cx + s * 0.15, cy - s * 0.20);
+    ctx.lineTo(cx + s * 0.15, cy + s * 0.10);
+    ctx.lineTo(cx - s * 0.15, cy + s * 0.10);
+    ctx.lineTo(cx - s * 0.15, cy - s * 0.20);
+    ctx.closePath(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.30, cy + s * 0.10); ctx.lineTo(cx + s * 0.30, cy + s * 0.10);
+    ctx.stroke();
+    ctx.beginPath(); ctx.rect(cx - s * 0.12, cy + s * 0.15, s * 0.24, s * 0.55); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy + s * 0.78, s * 0.10, 0, Math.PI); ctx.stroke();
+  }
+
+  function explosion(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    const spikes = 8;
+    for (let i = 0; i < spikes * 2; i++) {
+      const r = (i % 2 === 0) ? s * 0.85 : s * 0.35;
+      const a = (Math.PI / spikes) * i - Math.PI / 2;
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.15, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function fire(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.85);
+    ctx.bezierCurveTo(cx + s * 0.30, cy - s * 0.40, cx + s * 0.65, cy + s * 0.10, cx + s * 0.30, cy + s * 0.55);
+    ctx.bezierCurveTo(cx + s * 0.15, cy + s * 0.75, cx - s * 0.15, cy + s * 0.75, cx - s * 0.30, cy + s * 0.55);
+    ctx.bezierCurveTo(cx - s * 0.65, cy + s * 0.10, cx - s * 0.30, cy - s * 0.40, cx, cy - s * 0.85);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.35);
+    ctx.bezierCurveTo(cx + s * 0.18, cy + s * 0.05, cx + s * 0.20, cy + s * 0.30, cx, cy + s * 0.50);
+    ctx.bezierCurveTo(cx - s * 0.20, cy + s * 0.30, cx - s * 0.18, cy + s * 0.05, cx, cy - s * 0.35);
+    ctx.stroke();
+  }
+
+  function lightning(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx + s * 0.15, cy - s * 0.85);
+    ctx.lineTo(cx - s * 0.45, cy + s * 0.05);
+    ctx.lineTo(cx - s * 0.05, cy + s * 0.05);
+    ctx.lineTo(cx - s * 0.15, cy + s * 0.85);
+    ctx.lineTo(cx + s * 0.45, cy - s * 0.05);
+    ctx.lineTo(cx + s * 0.05, cy - s * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function crown(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.75, cy + s * 0.45);
+    ctx.lineTo(cx - s * 0.75, cy - s * 0.20);
+    ctx.lineTo(cx - s * 0.30, cy + s * 0.10);
+    ctx.lineTo(cx, cy - s * 0.55);
+    ctx.lineTo(cx + s * 0.30, cy + s * 0.10);
+    ctx.lineTo(cx + s * 0.75, cy - s * 0.20);
+    ctx.lineTo(cx + s * 0.75, cy + s * 0.45);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.75, cy + s * 0.60); ctx.lineTo(cx + s * 0.75, cy + s * 0.60);
+    ctx.stroke();
+  }
+
+  function demon(ctx, cx, cy, size, color) {
+    const s = size / 2;
+    _setup(ctx, s, color);
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.70, cy + s * 0.55);
+    ctx.quadraticCurveTo(cx - s * 0.80, cy - s * 0.40, cx - s * 0.30, cy - s * 0.75);
+    ctx.quadraticCurveTo(cx - s * 0.45, cy - s * 0.20, cx - s * 0.40, cy + s * 0.35);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + s * 0.70, cy + s * 0.55);
+    ctx.quadraticCurveTo(cx + s * 0.80, cy - s * 0.40, cx + s * 0.30, cy - s * 0.75);
+    ctx.quadraticCurveTo(cx + s * 0.45, cy - s * 0.20, cx + s * 0.40, cy + s * 0.35);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy + s * 0.55, s * 0.55, 0, Math.PI);
+    ctx.stroke();
+  }
+
+  const DRAWERS = { skull, crosshair, headshot, rifle, knife, explosion, fire, lightning, crown, demon };
+
+  return {
+    draw(ctx, name, cx, cy, size, color) {
+      const fn = DRAWERS[name];
+      if (!fn) return false;
+      ctx.save();
+      fn(ctx, cx, cy, size, color || '#ff5a1f');
+      ctx.restore();
+      return true;
+    },
+    has(name) { return !!DRAWERS[name]; },
+    list() { return Object.keys(DRAWERS); }
+  };
+})();
+
+/* ==================== [KILLICON] 击杀图标（固定 skull） ==================== */
+const KillIcon = (function () {
+  const SHOW_MS = 1000;   // 总显示时长
+  const ICON_SIZE = 64;   // 图标边长（CSS 像素）
+  let canvas = null, ctx = null, dpr = 1;
+  let visible = false, startedAt = 0, raf = 0;
+
+  function _init() {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'zpKillIcon';
+    canvas.style.cssText = 'position:fixed;left:50%;top:42%;'
+      + 'transform:translate(-50%,-50%);pointer-events:none;'
+      + 'z-index:2147483645;display:none;';
+    document.body.appendChild(canvas);
+    _resize();
+    window.addEventListener('resize', _resize);
+  }
+
+  function _resize() {
+    if (!canvas) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const size = ICON_SIZE;
+    canvas.width = Math.floor(size * dpr);
+    canvas.height = Math.floor(size * dpr);
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _render(t) {
+    if (!ctx) return;
+    const s = ICON_SIZE;
+    ctx.clearRect(0, 0, s, s);
+    const cx = s / 2, cy = s / 2;
+    const p = Math.max(0, Math.min(1, t));
+    // 入场 0~0.15 放大，出场 0.75~1 淡出
+    let scale = 1;
+    if (p < 0.15) scale = 0.5 + (p / 0.15) * 0.5;
+    let alpha = 1;
+    if (p > 0.75) alpha = 1 - (p - 0.75) / 0.25;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+    // 底圈（弱化视觉重量）
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.42, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 90, 31, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 骷髅图标
+    ZpIcons.draw(ctx, 'skull', cx, cy, s * 0.60, '#ff5a1f');
+    ctx.restore();
+  }
+
+  function _tick() {
+    if (!visible) return;
+    const t = (performance.now() - startedAt) / SHOW_MS;
+    _render(t);
+    if (t >= 1) {
+      visible = false;
+      canvas.style.display = 'none';
+      raf = 0;
+      return;
+    }
+    raf = requestAnimationFrame(_tick);
+  }
+
+  function flash() {
+    _init();
+    if (!visible) canvas.style.display = 'block';
+    visible = true;
+    startedAt = performance.now();
+    if (!raf) raf = requestAnimationFrame(_tick);
+  }
+
+  return { flash };
+})();
+
 const MicPanel = (function () {
   let canvas = null, ctx = null, visible = false;
   let items = [], dpr = 1, stage = 'ask';
