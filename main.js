@@ -2333,7 +2333,7 @@ function handleServerMsg(msg) {
   const __zpUrgentFix = true;
   const __ALLOW = ['welcome','snapshot','shot','hit','killed','explosion','action','join','leave',
     'notice','notice_deleted','activity','runtime_config','unstuck_ok','goal_reached','goal_return',
-    'pickup_taken','pickup_ok','checkpoint','position_correction','ack','c4_rejected','c4_planted','reject'];
+    'pickup_taken','pickup_ok','checkpoint','position_correction','ack','c4_rejected','c4_planted','reject','chat'];
   if (!msg || typeof msg !== 'object' || !__ALLOW.includes(msg.type)) return;
   if (msg.type === 'reject') {
     showRejectOverlay(msg.reason, msg.message, msg.downloadUrl, msg.downloadPassword);
@@ -2479,6 +2479,10 @@ function handleServerMsg(msg) {
     return;
   }
 
+  if (msg.type === 'chat') {
+    try { ChatPanel.receive(msg); } catch (e) {}
+    return;
+  }
   if (msg.type === 'notice') {
     if (msg.notice) latestNotices = [msg.notice, ...latestNotices.filter(n => n.id !== msg.notice.id)].slice(0, 50);
     updateNoticeBadge();
@@ -3149,6 +3153,150 @@ function updateDistanceCull() {
   _cullArr(corpses, px, pz, farSq);
 }
 /* ==================== [ZCULL END] ==================== */
+
+/* ==================== [CHAT] 局内聊天 ==================== */
+const ChatPanel = (function () {
+  let root = null, listEl = null, inputEl = null, visible = false;
+  const messages = [];
+  const MAX_MSGS = 100;
+
+  function _init() {
+    if (root) return;
+
+    root = document.createElement('div');
+    root.style.cssText = 'position:fixed;inset:0;background:rgba(18,20,24,0.45);'
+      + 'z-index:2147483646;display:none;align-items:center;justify-content:center;'
+      + 'touch-action:none;';
+    root.addEventListener('touchstart', (e) => { if (e.target === root) hide(); });
+    root.addEventListener('click', (e) => { if (e.target === root) hide(); });
+
+    const card = document.createElement('div');
+    card.style.cssText = 'width:min(82vw,400px);height:min(68vh,520px);'
+      + 'background:rgba(28,32,38,0.92);'
+      + 'border:1px solid rgba(150,170,190,0.22);'
+      + 'display:flex;flex-direction:column;';
+
+    // 标题行
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;'
+      + 'padding:14px 18px;border-bottom:1px solid rgba(150,170,190,0.12);flex-shrink:0;';
+    const title = document.createElement('div');
+    title.textContent = '聊天';
+    title.style.cssText = 'font-size:15px;font-weight:700;color:#e8ecf0;letter-spacing:1px;';
+    const close = document.createElement('div');
+    close.textContent = '\u2715';
+    close.style.cssText = 'font-size:20px;color:#c0c8d0;cursor:pointer;padding:0 4px;line-height:1;';
+    close.addEventListener('click', hide);
+    header.appendChild(title);
+    header.appendChild(close);
+    card.appendChild(header);
+
+    // 消息列表
+    listEl = document.createElement('div');
+    listEl.style.cssText = 'flex:1;overflow-y:auto;padding:10px 14px;'
+      + 'display:flex;flex-direction:column;gap:4px;';
+    card.appendChild(listEl);
+
+    // 输入行
+    const inputRow = document.createElement('div');
+    inputRow.style.cssText = 'display:flex;gap:6px;padding:10px;'
+      + 'border-top:1px solid rgba(150,170,190,0.12);flex-shrink:0;';
+    inputEl = document.createElement('input');
+    inputEl.type = 'text';
+    inputEl.placeholder = '输入消息...';
+    inputEl.maxLength = 100;
+    inputEl.style.cssText = 'flex:1;background:rgba(255,255,255,0.045);'
+      + 'border:1px solid rgba(150,170,190,0.22);color:#e8ecf0;'
+      + 'padding:10px 12px;font-size:14px;outline:none;font-family:inherit;'
+      + 'border-radius:0;min-width:0;';
+    inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') _send(); });
+    const sendBtn = document.createElement('button');
+    sendBtn.textContent = '发送';
+    sendBtn.style.cssText = 'background:#ff5a1f;color:#0a0a0c;border:none;'
+      + 'padding:0 16px;font-weight:700;font-size:13px;cursor:pointer;'
+      + 'font-family:inherit;flex-shrink:0;';
+    sendBtn.addEventListener('click', _send);
+    inputRow.appendChild(inputEl);
+    inputRow.appendChild(sendBtn);
+    card.appendChild(inputRow);
+
+    root.appendChild(card);
+    document.body.appendChild(root);
+  }
+
+  function _render() {
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    for (const m of messages.slice(-MAX_MSGS)) {
+      const row = document.createElement('div');
+      row.style.cssText = 'background:rgba(255,255,255,0.045);padding:7px 10px;'
+        + 'font-size:13px;color:#e8ecf0;line-height:1.5;word-break:break-word;';
+      const name = document.createElement('span');
+      name.textContent = m.sender + '  ';
+      name.style.cssText = 'color:#8ac8ff;font-weight:600;';
+      const text = document.createElement('span');
+      text.textContent = m.content;
+      row.appendChild(name);
+      row.appendChild(text);
+      listEl.appendChild(row);
+    }
+    listEl.scrollTop = listEl.scrollHeight;
+  }
+
+  function _send() {
+    if (!inputEl) return;
+    const text = inputEl.value.trim();
+    if (!text) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'chat', content: text }));
+    inputEl.value = '';
+  }
+
+  function receive(m) {
+    messages.push({ sender: m.sender, content: m.content });
+    if (messages.length > MAX_MSGS * 2) messages.shift();
+    if (visible) _render();
+  }
+
+  function show() {
+    _init();
+    visible = true;
+    root.style.display = 'flex';
+    _render();
+    setTimeout(() => inputEl && inputEl.focus(), 100);
+  }
+  function hide() {
+    visible = false;
+    if (root) root.style.display = 'none';
+    if (inputEl) inputEl.blur();
+  }
+  function toggle() { visible ? hide() : show(); }
+  function isVisible() { return visible; }
+
+  return { show, hide, toggle, receive, isVisible };
+})();
+
+/* ==================== [CHAT-BTN] 聊天悬浮按钮 ==================== */
+(function ensureChatButton() {
+  function _create() {
+    if (document.getElementById('zpChatBtn')) return;
+    const btn = document.createElement('div');
+    btn.id = 'zpChatBtn';
+    btn.textContent = '\uD83D\uDCAC';  // 💬
+    btn.style.cssText = 'position:fixed;top:8px;right:60px;width:36px;height:36px;'
+      + 'display:flex;align-items:center;justify-content:center;'
+      + 'background:rgba(18,24,30,.55);border:1px solid rgba(235,244,248,.35);'
+      + 'border-radius:8px;z-index:9998;cursor:pointer;font-size:18px;line-height:1;'
+      + 'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { ChatPanel.toggle(); } catch (err) { console.warn('[CHAT]', err); }
+    });
+    document.body.appendChild(btn);
+  }
+  if (document.body) _create();
+  else document.addEventListener('DOMContentLoaded', _create);
+})();
 
 /* ==================== [B] 初始化 ==================== */
 
@@ -6493,6 +6641,7 @@ function setupInput() {
     }
     keys[e.code] = true;
     if (e.repeat) return;
+    if (e.code === 'KeyT') { e.preventDefault(); try { ChatPanel.toggle(); } catch (err) {} return; }
     if (e.code === keybinds.reload) reload();
     if (e.code === keybinds.view) toggleView();
     if (e.code === keybinds.crouch) setCrouch(!state.crouching);
