@@ -185,11 +185,12 @@ const CDNPicker = (function () {
   let canvas = null, ctx = null, dpr = 1;
   let visible = false;
   let items = [];
-  const state = new Map();   // url → { status: 'pending'|'done'|'fail', ms }
+  const state = new Map();   // url → { status: 'pending'|'done'|'fail', speed }
   let resolveFn = null;
   let aborts = [];
 
-  const PROBE_TIMEOUT = 3000;
+  const PROBE_TIMEOUT = 8000;
+  const PROBE_FILE = 'textures/concrete/rough.jpg';   // 311 KB 实测带宽
 
   function _init() {
     if (canvas) return;
@@ -222,12 +223,12 @@ const CDNPicker = (function () {
 
   function _sorted() {
     return CDN_CANDIDATES.slice().sort((a, b) => {
-      const sa = state.get(a) || { status: 'pending' };
-      const sb = state.get(b) || { status: 'pending' };
+      const sa = state.get(a) || { status: 'pending', speed: 0 };
+      const sb = state.get(b) || { status: 'pending', speed: 0 };
       const rank = s => s.status === 'done' ? 0 : s.status === 'pending' ? 1 : 2;
       const ra = rank(sa), rb = rank(sb);
       if (ra !== rb) return ra - rb;
-      if (sa.status === 'done' && sb.status === 'done') return sa.ms - sb.ms;
+      if (sa.status === 'done' && sb.status === 'done') return sb.speed - sa.speed;   // 速度降序
       return 0;
     });
   }
@@ -263,7 +264,7 @@ const CDNPicker = (function () {
     const doneCount = [...state.values()].filter(s => s.status !== 'pending').length;
     ctx.fillStyle = 'rgba(140, 150, 165, 0.9)';
     ctx.font = '400 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText('测速 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 14, cardY + 38);
+    ctx.fillText('下载测速 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 14, cardY + 38);
 
     ctx.fillStyle = 'rgba(255, 204, 51, 0.75)';
     ctx.font = '400 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
@@ -281,7 +282,7 @@ const CDNPicker = (function () {
     const sorted = _sorted();
 
     for (const url of sorted) {
-      const s = state.get(url) || { status: 'pending', ms: null };
+      const s = state.get(url) || { status: 'pending', speed: 0 };
       const rowX = cardX + 10;
       const rowW = cardW - 20;
       const rowHeight = rowH - 4;
@@ -316,10 +317,13 @@ const CDNPicker = (function () {
       // 右侧状态
       ctx.textAlign = 'right';
       if (s.status === 'done') {
-        const color = s.ms < 300 ? '#4ade80' : s.ms < 1000 ? '#ffcc33' : '#ff8c42';
+        const color = s.speed > 300 ? '#4ade80' : s.speed > 100 ? '#ffcc33' : '#ff8c42';
         ctx.fillStyle = color;
         ctx.font = '700 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.fillText(s.ms.toFixed(0) + 'ms', rowX + rowW - 12, dotCy);
+        const txt = s.speed >= 1024
+          ? (s.speed / 1024).toFixed(2) + ' MB/s'
+          : s.speed.toFixed(0) + ' KB/s';
+        ctx.fillText(txt, rowX + rowW - 12, dotCy);
       } else if (s.status === 'pending') {
         ctx.fillStyle = 'rgba(150, 160, 175, 0.7)';
         ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
@@ -372,14 +376,22 @@ const CDNPicker = (function () {
   }
 
   function _probeOne(base) {
+    // 真实下载测速：拉 311 KB 的文件，测实际带宽
     const t0 = performance.now();
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT);
-    return fetch(base + 'ping.txt?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })
+    return fetch(base + PROBE_FILE + '?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })
       .then(r => {
+        if (!r.ok) { clearTimeout(timer); throw new Error('HTTP ' + r.status); }
+        return r.arrayBuffer();
+      })
+      .then(buf => {
         clearTimeout(timer);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text().then(() => performance.now() - t0);
+        const dt = performance.now() - t0;
+        if (!buf || buf.byteLength < 1000) throw new Error('empty');
+        // 返回真实速度 KB/s（越大越好）
+        const kbPerSec = (buf.byteLength / 1024) / (dt / 1000);
+        return kbPerSec;
       })
       .catch(e => {
         clearTimeout(timer);
@@ -392,7 +404,7 @@ const CDNPicker = (function () {
     for (const a of aborts) { try { a.abort(); } catch (e) {} }
     aborts = [];
     for (const url of CDN_CANDIDATES) {
-      state.set(url, { status: 'pending', ms: null });
+      state.set(url, { status: 'pending', speed: 0 });
     }
     _render();
 
@@ -408,8 +420,8 @@ const CDNPicker = (function () {
 
     for (const url of CDN_CANDIDATES) {
       _probeOne(url)
-        .then(ms => { state.set(url, { status: 'done', ms }); })
-        .catch(() => { state.set(url, { status: 'fail', ms: null }); })
+        .then(speed => { state.set(url, { status: 'done', speed }); })
+        .catch(() => { state.set(url, { status: 'fail', speed: 0 }); })
         .finally(scheduleRedraw);
     }
   }
@@ -424,11 +436,11 @@ const CDNPicker = (function () {
   }
 
   function _autoPick() {
-    let best = null, bestMs = Infinity;
+    let best = null, bestSpeed = -1;
     for (const url of CDN_CANDIDATES) {
       const s = state.get(url);
-      if (s && s.status === 'done' && s.ms < bestMs) {
-        bestMs = s.ms;
+      if (s && s.status === 'done' && s.speed > bestSpeed) {
+        bestSpeed = s.speed;
         best = url;
       }
     }
