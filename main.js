@@ -3555,6 +3555,15 @@ async function init() {
   await loadSounds();
 
   try { window.__ZP_BOOT_STAGE__ = 'finalize'; } catch (e) {}
+  // ===== Shader 预热：提前编译所有材质的 shader =====
+  try {
+    console.log('[WARMUP] 开始编译 shader...');
+    const __t0 = performance.now();
+    renderer.compile(scene, camera);
+    console.log('[WARMUP] shader 编译完成，耗时 ' + (performance.now() - __t0).toFixed(0) + 'ms');
+  } catch (e) {
+    console.warn('[WARMUP] 失败:', e);
+  }
   setLoading(100, '就绪');
   clock = new THREE.Clock();
   initMinimap();
