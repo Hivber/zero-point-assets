@@ -241,7 +241,7 @@ const CDNPicker = (function () {
     const cardW = Math.min(W * 0.78, 380);
     const N = CDN_CANDIDATES.length;
     const listH = N * rowH;
-    const HEADER_H = 56;
+    const HEADER_H = 78;
     const FOOTER_H = 50;
     const cardH = Math.min(H - 40, HEADER_H + listH + FOOTER_H);
     const cardX = (W - cardW) / 2;
@@ -258,17 +258,21 @@ const CDNPicker = (function () {
     ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('选择线路', cardX + 14, cardY + 22);
+    ctx.fillText('选择线路', cardX + 14, cardY + 20);
 
     const doneCount = [...state.values()].filter(s => s.status !== 'pending').length;
     ctx.fillStyle = 'rgba(140, 150, 165, 0.9)';
     ctx.font = '400 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText('测速 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 14, cardY + 40);
+    ctx.fillText('测速 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 14, cardY + 38);
+
+    ctx.fillStyle = 'rgba(255, 204, 51, 0.75)';
+    ctx.font = '400 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText('MS 过高可在 WiFi 与流量之间切换', cardX + 14, cardY + 58);
 
     ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
     ctx.beginPath();
-    ctx.moveTo(cardX + 10, cardY + 52);
-    ctx.lineTo(cardX + cardW - 10, cardY + 52);
+    ctx.moveTo(cardX + 10, cardY + 74);
+    ctx.lineTo(cardX + cardW - 10, cardY + 74);
     ctx.stroke();
 
     // 列表（全部显示，不截断）
