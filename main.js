@@ -120,9 +120,23 @@ function paintAssetProgress(force) {
 // ===== 多 CDN 自动择优 =====
 const CDN_HASH = 'f30f87e';
 const CDN_CANDIDATES = [
+  // ===== 官方 jsDelivr 节点 =====
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://fastly.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://gcore.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://quantil.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://testingcf.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  // ===== 第三方镜像 =====
   'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://jsd.onmicrosoft.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.jsdmirror.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://jsd.cdn.zzko.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.jsdelivr.net.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://jsdelivr.topthink.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.iocdn.cc/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.osyb.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.bili33.top/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://gh.776161.xyz/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
+  'https://cdn.jsdelivr.us/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
 ];
 let ASSET_BASE = CDN_CANDIDATES[0];
 
@@ -144,7 +158,7 @@ async function _probeOne(base, timeoutMs) {
 async function pickFastestCDN() {
   try {
     const cached = JSON.parse(localStorage.getItem('zp.cdn.cache') || 'null');
-    if (cached && cached.base && Date.now() - cached.t < 3600000
+    if (cached && cached.base && Date.now() - cached.t < 1800000
         && CDN_CANDIDATES.includes(cached.base)) {
       ASSET_BASE = cached.base;
       console.log('[CDN] 用缓存节点', ASSET_BASE);
@@ -154,13 +168,14 @@ async function pickFastestCDN() {
 
   const start = performance.now();
   const results = await Promise.all(
-    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 3000) }))
+    CDN_CANDIDATES.map(async (base) => ({ base, ms: await _probeOne(base, 2000) }))
   );
   results.sort((a, b) => a.ms - b.ms);
   const best = results[0];
 
-  if (best.ms === Infinity) {
-    console.warn('[CDN] 全部节点超时，用默认节点');
+  if (best.ms === Infinity || best.ms > 3000) {
+    console.warn('[CDN] 无可用节点或全部过慢，用默认节点');
+    ASSET_BASE = CDN_CANDIDATES[0];
   } else {
     ASSET_BASE = best.base;
     const detail = results.map(r => r.base.replace('https://', '').split('/')[0] + '=' + (r.ms === Infinity ? 'x' : r.ms.toFixed(0) + 'ms')).join(', ');
