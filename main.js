@@ -3280,19 +3280,22 @@ const ChatPanel = (function () {
 (function ensureChatButton() {
   function _create() {
     if (document.getElementById('zpChatBtn')) return;
-    const btn = document.createElement('div');
+    const btn = document.createElement('button');
     btn.id = 'zpChatBtn';
-    btn.textContent = '\uD83D\uDCAC';  // 💬
-    btn.style.cssText = 'position:fixed;top:8px;right:60px;width:36px;height:36px;'
-      + 'display:flex;align-items:center;justify-content:center;'
-      + 'background:rgba(18,24,30,.55);border:1px solid rgba(235,244,248,.35);'
-      + 'border-radius:8px;z-index:9998;cursor:pointer;font-size:18px;line-height:1;'
-      + 'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);';
+    btn.setAttribute('aria-label', '聊天');
+    btn.textContent = '💬';
+    // 位置：跟 micBtn 同一行，紧挨它左边（micBtn right=286，宽 44，间距 8）
+    btn.style.cssText = 'position:absolute;top:16px;right:338px;width:44px;height:44px;'
+      + 'border-radius:50%;background:transparent;border:none;'
+      + 'color:transparent;font-size:0;pointer-events:auto;cursor:pointer;'
+      + 'z-index:220;touch-action:none;';
+    btn.classList.add('hidden');
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       try { ChatPanel.toggle(); } catch (err) { console.warn('[CHAT]', err); }
     });
-    document.body.appendChild(btn);
+    const hud = document.getElementById('hud');
+    if (hud) hud.appendChild(btn); else document.body.appendChild(btn);
   }
   if (document.body) _create();
   else document.addEventListener('DOMContentLoaded', _create);
@@ -6698,6 +6701,7 @@ function roleAt(cx, cy) {
     if (el.closest('#orbitBtn')) return 'orbitBtn';
     if (el.closest('#danceBtn')) return 'danceBtn';
     if (el.closest('#micBtn')) return 'micBtn';
+    if (el.closest('#zpChatBtn')) return 'zpChatBtn';
     if (el.closest('#joystick')) return 'joy';
     if (el.closest('#touchLayoutHudBtn')) return 'touchLayoutBtn';
     if (el.closest('#keybindPanel')) return 'keybindUI';
@@ -6764,6 +6768,7 @@ function setupTouch() {
       else if (role === 'orbitBtn') startOrbit();
       else if (role === 'danceBtn') { ActionPanel.toggle(); }
       else if (role === 'micBtn') { MicPanel.toggle(); }
+      else if (role === 'zpChatBtn') { ChatPanel.toggle(); }
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
@@ -7141,6 +7146,24 @@ function mobileHudDrawIcon(id, r, opts = {}) {
     c.beginPath(); c.moveTo(cx+s*.06, cy-s*.24); c.lineTo(cx+s*.58, cy-s*.02); c.stroke();
     c.beginPath(); c.moveTo(cx-s*.14, cy+s*.08); c.lineTo(cx-s*.46, cy+s*.62); c.stroke();
     c.beginPath(); c.moveTo(cx+s*.12, cy+s*.26); c.lineTo(cx+s*.38, cy+s*.64); c.stroke();
+  } else if (id === 'zpChatBtn') {
+    // 对话气泡图标
+    c.beginPath();
+    c.moveTo(cx - s*.75, cy - s*.55);
+    c.lineTo(cx + s*.75, cy - s*.55);
+    c.lineTo(cx + s*.75, cy + s*.30);
+    c.lineTo(cx + s*.15, cy + s*.30);
+    c.lineTo(cx - s*.20, cy + s*.70);
+    c.lineTo(cx - s*.20, cy + s*.30);
+    c.lineTo(cx - s*.75, cy + s*.30);
+    c.closePath();
+    c.stroke();
+    c.beginPath();
+    c.arc(cx - s*.30, cy - s*.12, s*.06, 0, Math.PI*2); c.fill();
+    c.beginPath();
+    c.arc(cx, cy - s*.12, s*.06, 0, Math.PI*2); c.fill();
+    c.beginPath();
+    c.arc(cx + s*.30, cy - s*.12, s*.06, 0, Math.PI*2); c.fill();
   } else if (id === 'micBtn') {
     c.beginPath();
     c.moveTo(cx - s*.18, cy - s*.62);
@@ -7304,6 +7327,7 @@ function mobileHudSpriteSignature(id) {
   else if (id==='optBtn') dynamic=`o:${optimizeMode?1:0}`;
   else if (id==='danceBtn') dynamic=`d:${state.dancing?1:0}`;
   else if (id==='micBtn') dynamic=`mc:${MicPanel.isVisible()?1:0}`;
+  else if (id==='zpChatBtn') dynamic=`ch:${ChatPanel.isVisible()?1:0}`;
   else if (id==='killsBox') dynamic=`k:${state.killCount|0}`;
   const selected = touchLayoutEditing ? (getTouchWorkingSelected()?.id || '') : '';
   return `${visible}|${x}|${dynamic}|e:${selected}`;
@@ -7322,7 +7346,7 @@ function mobileHudDrawSpriteById(id) {
   const kindById = {
     exitBtn:'red', viewBtn:'blue', gyroBtn:'cyan', optBtn:'gold', unstuckBtn:'gold',
     keybindHudBtn:'utility', touchLayoutHudBtn:'gold', fireBtn:'red', reloadBtn2:'blue',
-    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan', micBtn:'cyan'
+    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan', micBtn:'cyan', zpChatBtn:'green'
   };
   const labels = {
     exitBtn:'退出',
@@ -7339,7 +7363,8 @@ function mobileHudDrawSpriteById(id) {
     switchBtn:state.holding==='c4'?'切枪':'装备',
     orbitBtn:'观赏',
     danceBtn:'动作',
-    micBtn:'语音'
+    micBtn:'语音',
+    zpChatBtn:'聊天'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -7374,7 +7399,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','orbitBtn','danceBtn','micBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','danceBtn','micBtn','zpChatBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
