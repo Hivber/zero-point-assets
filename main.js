@@ -3102,10 +3102,11 @@ function updateOtherPlayers(dt) {
 
     if (!op.vrm) continue;
 
-    if (currentQuality === 'ultra') {
-      const __d2 = op.group.position.distanceToSquared(camera.position);
-      if (__d2 > 225) continue;
-    }
+    // 距离剔除：ultra 档激进（15m），其他档位宽松（30m）
+    const __cullSq = (currentQuality === 'ultra') ? (15 * 15) : LOD_VRM_FULL_DIST_SQ;
+    const __d2 = op.group.position.distanceToSquared(camera.position);
+    op.vrm.scene.visible = __d2 <= __cullSq;
+    if (!op.vrm.scene.visible) continue;
 
     updateVRMAvatarAnimation(op.vrm, {
       jumping: !!op._jumping,
@@ -3116,6 +3117,38 @@ function updateOtherPlayers(dt) {
     op.vrm.update(dt);
   }
 }
+
+/* ==================== [ZCULL] 距离剔除 ==================== */
+const DIST_CULL_DECOR_SQ = LOD_DECOR_VISIBLE_DIST_SQ;
+
+function _cullArr(arr, px, pz, farSq) {
+  for (const item of arr) {
+    const m = (item && item.mesh) ? item.mesh : item;
+    if (!m || !m.position) continue;
+    const dx = m.position.x - px;
+    const dz = m.position.z - pz;
+    m.visible = (dx * dx + dz * dz) < farSq;
+  }
+}
+
+function updateDistanceCull() {
+  // ultra 档由 applyUltraLowMode 全权管理，跳过
+  if (currentQuality === 'ultra') return;
+
+  const px = camera.position.x;
+  const pz = camera.position.z;
+  const farSq = DIST_CULL_DECOR_SQ;
+
+  _cullArr(wallClocks, px, pz, farSq);
+  _cullArr(pottedPlants, px, pz, farSq);
+  _cullArr(vintageRadios, px, pz, farSq);
+  _cullArr(gasTanks, px, pz, farSq);
+  _cullArr(barrels, px, pz, farSq);
+  _cullArr(quiverTrees, px, pz, farSq);
+  _cullArr(decorativeC4Nodes, px, pz, farSq);
+  _cullArr(corpses, px, pz, farSq);
+}
+/* ==================== [ZCULL END] ==================== */
 
 /* ==================== [B] 初始化 ==================== */
 
@@ -7679,6 +7712,7 @@ function loop() {
     }
     updateFirstPersonClip();
     updateOtherPlayers(dt);
+    updateDistanceCull();
     updateExplosionLights();
     updateCorpses();
     updateLocalBullets(dt);
