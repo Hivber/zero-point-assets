@@ -127,16 +127,6 @@ const CDN_CANDIDATES = [
   'https://quantil.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   'https://testingcf.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
   // ===== 第三方镜像 =====
-  'https://cdn.jsdmirror.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.jsdmirror.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://jsd.cdn.zzko.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.jsdelivr.net.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://jsdelivr.topthink.com/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.iocdn.cc/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.osyb.cn/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.bili33.top/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://gh.776161.xyz/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
-  'https://cdn.jsdelivr.us/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
 ];
 let ASSET_BASE = CDN_CANDIDATES[0];
 
