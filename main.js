@@ -4891,7 +4891,7 @@ const KillIcon = (function () {
     if (canvas) return;
     canvas = document.createElement('canvas');
     canvas.id = 'zpKillIcon';
-    canvas.style.cssText = 'position:fixed;left:50%;top:42%;'
+    canvas.style.cssText = 'position:fixed;left:50%;top:70%;'
       + 'transform:translate(-50%,-50%);pointer-events:none;'
       + 'z-index:2147483645;display:none;';
     document.body.appendChild(canvas);
