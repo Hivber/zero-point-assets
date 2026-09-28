@@ -237,12 +237,13 @@ const CDNPicker = (function () {
     ctx.fillStyle = 'rgba(10, 12, 16, 0.92)';
     ctx.fillRect(0, 0, W, H);
 
-    const rowH = 48;
-    const cardW = Math.min(W * 0.92, 520);
+    const rowH = 32;
+    const cardW = Math.min(W * 0.78, 380);
     const N = CDN_CANDIDATES.length;
     const listH = N * rowH;
-    // 标题区 80 + 列表 + 底部按钮 68，总高不超屏幕
-    const cardH = Math.min(H - 40, 80 + listH + 68);
+    const HEADER_H = 56;
+    const FOOTER_H = 50;
+    const cardH = Math.min(H - 40, HEADER_H + listH + FOOTER_H);
     const cardX = (W - cardW) / 2;
     const cardY = Math.max(20, (H - cardH) / 2);
 
@@ -254,75 +255,75 @@ const CDNPicker = (function () {
 
     // 标题
     ctx.fillStyle = 'rgba(232, 236, 240, 0.98)';
-    ctx.font = '700 17px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('选择线路', cardX + 20, cardY + 32);
+    ctx.fillText('选择线路', cardX + 14, cardY + 22);
 
     const doneCount = [...state.values()].filter(s => s.status !== 'pending').length;
     ctx.fillStyle = 'rgba(140, 150, 165, 0.9)';
-    ctx.font = '400 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-    ctx.fillText('测速进度 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 20, cardY + 56);
+    ctx.font = '400 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText('测速 ' + doneCount + ' / ' + CDN_CANDIDATES.length, cardX + 14, cardY + 40);
 
     ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
     ctx.beginPath();
-    ctx.moveTo(cardX + 14, cardY + 74);
-    ctx.lineTo(cardX + cardW - 14, cardY + 74);
+    ctx.moveTo(cardX + 10, cardY + 52);
+    ctx.lineTo(cardX + cardW - 10, cardY + 52);
     ctx.stroke();
 
     // 列表（全部显示，不截断）
     items = [];
-    let y = cardY + 80;
+    let y = cardY + HEADER_H;
     const sorted = _sorted();
 
     for (const url of sorted) {
       const s = state.get(url) || { status: 'pending', ms: null };
-      const rowX = cardX + 14;
-      const rowW = cardW - 28;
-      const rowHeight = rowH - 6;
+      const rowX = cardX + 10;
+      const rowW = cardW - 20;
+      const rowHeight = rowH - 4;
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
       ctx.fillRect(rowX, y, rowW, rowHeight);
 
       // 状态指示
-      const dotCx = rowX + 22;
+      const dotCx = rowX + 18;
       const dotCy = y + rowHeight / 2;
       if (s.status === 'done') {
         ctx.fillStyle = '#4ade80';
-        ctx.beginPath(); ctx.arc(dotCx, dotCy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dotCx, dotCy, 4, 0, Math.PI * 2); ctx.fill();
       } else if (s.status === 'pending') {
         ctx.fillStyle = 'rgba(150, 160, 175, 0.6)';
-        ctx.beginPath(); ctx.arc(dotCx, dotCy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dotCx, dotCy, 4, 0, Math.PI * 2); ctx.fill();
       } else {
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.moveTo(dotCx - 4, dotCy - 4); ctx.lineTo(dotCx + 4, dotCy + 4);
-        ctx.moveTo(dotCx + 4, dotCy - 4); ctx.lineTo(dotCx - 4, dotCy + 4);
+        ctx.moveTo(dotCx - 3, dotCy - 3); ctx.lineTo(dotCx + 3, dotCy + 3);
+        ctx.moveTo(dotCx + 3, dotCy - 3); ctx.lineTo(dotCx - 3, dotCy + 3);
         ctx.stroke();
       }
 
       // 域名
       ctx.fillStyle = 'rgba(232, 236, 240, 0.95)';
-      ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(_shortHost(url), rowX + 42, dotCy);
+      ctx.fillText(_shortHost(url), rowX + 32, dotCy);
 
       // 右侧状态
       ctx.textAlign = 'right';
       if (s.status === 'done') {
         const color = s.ms < 300 ? '#4ade80' : s.ms < 1000 ? '#ffcc33' : '#ff8c42';
         ctx.fillStyle = color;
-        ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.fillText(s.ms.toFixed(0) + 'ms', rowX + rowW - 16, dotCy);
+        ctx.font = '700 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText(s.ms.toFixed(0) + 'ms', rowX + rowW - 12, dotCy);
       } else if (s.status === 'pending') {
         ctx.fillStyle = 'rgba(150, 160, 175, 0.7)';
-        ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.fillText('测速中…', rowX + rowW - 16, dotCy);
+        ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText('测速中…', rowX + rowW - 12, dotCy);
       } else {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-        ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.fillText('不可用', rowX + rowW - 16, dotCy);
+        ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillText('不可用', rowX + rowW - 12, dotCy);
       }
       ctx.textAlign = 'left';
 
@@ -333,11 +334,11 @@ const CDNPicker = (function () {
     }
 
     // 底部按钮
-    const btnH = 40;
-    const btnY = cardY + cardH - 14 - btnH;
-    const btnW = Math.min(160, (cardW - 42) / 2);
-    const autoX = cardX + cardW - 14 - btnW;
-    const reX = autoX - 10 - btnW;
+    const btnH = 32;
+    const btnY = cardY + cardH - 10 - btnH;
+    const btnW = Math.min(120, (cardW - 32) / 2);
+    const autoX = cardX + cardW - 10 - btnW;
+    const reX = autoX - 8 - btnW;
 
     const hasDone = [...state.values()].some(s => s.status === 'done');
 
@@ -348,7 +349,7 @@ const CDNPicker = (function () {
     ctx.lineWidth = 1;
     ctx.strokeRect(reX, btnY, btnW, btnH);
     ctx.fillStyle = 'rgba(200, 210, 220, 0.9)';
-    ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('重新测速', reX + btnW / 2, btnY + btnH / 2);
 
