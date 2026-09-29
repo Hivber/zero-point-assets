@@ -5897,7 +5897,7 @@ const MicPanel = (function () {
       ctx.textAlign = 'left';
       ctx.fillText('语音已开启', cardX + 20, y + rowH / 2);
       y += rowH;
-      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'close2', '关闭');
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'close2', '关闭语音');
     } else if (stage === 'failed') {
       ctx.fillStyle = '#ff6666';
       ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
@@ -5922,7 +5922,13 @@ const MicPanel = (function () {
   function _hit(cx, cy) {
     for (const it of items) {
       if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
-        if (it.action === '__close' || it.action === 'cancel' || it.action === 'close2') { hide(); return; }
+        if (it.action === '__close' || it.action === 'cancel') { hide(); return; }
+        if (it.action === 'close2') {
+          VoiceChat.stop();
+          console.log('[VOICE] 已关闭');
+          hide();
+          return;
+        }
         if (it.action === 'allow') { _connect(); return; }
         if (it.action === 'retry') { _connect(); return; }
       }
@@ -5950,7 +5956,8 @@ const MicPanel = (function () {
 
   function show() {
     _init(); _resize();
-    visible = true; stage = 'ask';
+    visible = true;
+    stage = VoiceChat.isStarted() ? 'active' : 'ask';
     canvas.style.setProperty('z-index', '2147483646', 'important');
     canvas.style.setProperty('pointer-events', 'auto', 'important');
     canvas.style.display = 'block';
