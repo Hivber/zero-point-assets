@@ -5825,6 +5825,330 @@ const VoiceChat = (function () {
   return { start, stop, receive, isStarted: () => started, unlockPlayback };
 })();
 
+/* ==================== [FACE] 面部追踪核心 ==================== */
+const FaceTracker = (function () {
+  let landmarker = null;
+  let videoEl = null;
+  let stream = null;
+  let raf = 0;
+  let running = false;
+  let lastVideoTime = -1;
+
+  const MODEL_URL = '/face_landmarker.task';
+  const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm';
+  const MP_MODULE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9';
+
+  async function _initModules() {
+    if (landmarker) return;
+    const mp = await import(MP_MODULE);
+    const FaceLandmarker = mp.FaceLandmarker;
+    const FilesetResolver = mp.FilesetResolver;
+    const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
+    landmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true,
+      runningMode: 'VIDEO',
+      numFaces: 1,
+    });
+  }
+
+  async function start() {
+    if (running) return true;
+    try {
+      await _initModules();
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 480, height: 360 },
+        audio: false,
+      });
+      videoEl = document.createElement('video');
+      videoEl.srcObject = stream;
+      videoEl.autoplay = true;
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      videoEl.style.cssText = 'position:fixed;top:0;right:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
+      document.body.appendChild(videoEl);
+      await videoEl.play();
+      running = true;
+      _loop();
+      try { console.log('[FACE] 已启动'); } catch (e) {}
+      return true;
+    } catch (e) {
+      try { console.warn('[FACE] 启动失败', e); } catch (err) {}
+      stop();
+      return false;
+    }
+  }
+
+  function stop() {
+    running = false;
+    if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} raf = 0; }
+    if (stream) { try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} stream = null; }
+    if (videoEl && videoEl.parentNode) videoEl.parentNode.removeChild(videoEl);
+    videoEl = null;
+    try {
+      if (playerVRM && playerVRM.expressionManager) {
+        playerVRM.expressionManager.setValue('blink', 0);
+      }
+      if (playerVRM && playerVRM.humanoid) {
+        const head = playerVRM.humanoid.getNormalizedBoneNode('head');
+        const neck = playerVRM.humanoid.getNormalizedBoneNode('neck');
+        if (head) { head.rotation.x = 0; head.rotation.y = 0; head.rotation.z = 0; }
+        if (neck) { neck.rotation.x = 0; neck.rotation.y = 0; neck.rotation.z = 0; }
+      }
+    } catch (e) {}
+    try { console.log('[FACE] 已停止'); } catch (e) {}
+  }
+
+  function _applyToVRM(categories, matrix) {
+    if (!playerVRM) return;
+    const findScore = function (name) {
+      for (let i = 0; i < categories.length; i++) {
+        if (categories[i].categoryName === name) return categories[i].score;
+      }
+      return 0;
+    };
+    const blinkL = findScore('eyeBlinkLeft');
+    const blinkR = findScore('eyeBlinkRight');
+    const blink = Math.max(blinkL, blinkR);
+    try {
+      if (playerVRM.expressionManager) {
+        playerVRM.expressionManager.setValue('blink', blink);
+      }
+    } catch (e) {}
+
+    let yaw = 0, pitch = 0, roll = 0;
+    if (matrix && matrix.data && matrix.data.length >= 16) {
+      const m = matrix.data;
+      yaw = Math.atan2(-m[2], m[0]);
+      pitch = Math.asin(Math.max(-1, Math.min(1, m[9])));
+      roll = Math.atan2(-m[1], m[5]);
+      yaw = Math.max(-0.6, Math.min(0.6, yaw));
+      pitch = Math.max(-0.4, Math.min(0.4, pitch));
+      roll = Math.max(-0.3, Math.min(0.3, roll));
+    }
+    try {
+      if (playerVRM.humanoid) {
+        const head = playerVRM.humanoid.getNormalizedBoneNode('head');
+        const neck = playerVRM.humanoid.getNormalizedBoneNode('neck');
+        if (head) {
+          head.rotation.y = yaw * 0.8;
+          head.rotation.x = pitch * 0.8;
+          head.rotation.z = roll * 0.8;
+        }
+        if (neck) {
+          neck.rotation.y = yaw * 0.2;
+          neck.rotation.x = pitch * 0.2;
+          neck.rotation.z = roll * 0.2;
+        }
+      }
+    } catch (e) {}
+  }
+
+  function _loop() {
+    if (!running) return;
+    raf = requestAnimationFrame(_loop);
+    if (!videoEl || videoEl.readyState < 2) return;
+    if (videoEl.currentTime === lastVideoTime) return;
+    lastVideoTime = videoEl.currentTime;
+    try {
+      const r = landmarker.detectForVideo(videoEl, performance.now());
+      if (r && r.faceBlendshapes && r.faceBlendshapes[0]) {
+        const bs = r.faceBlendshapes[0].categories;
+        const mat = (r.facialTransformationMatrixes && r.facialTransformationMatrixes[0]) || null;
+        _applyToVRM(bs, mat);
+      }
+    } catch (e) {}
+  }
+
+  return { start: start, stop: stop, isRunning: function () { return running; } };
+})();
+
+/* ==================== [FACE-UI] 面部追踪弹窗 ==================== */
+const FaceTrackPanel = (function () {
+  let canvas = null, ctx = null, visible = false;
+  let items = [], dpr = 1, stage = 'ask';
+
+  function _init() {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'zpFaceTrackPanel';
+    canvas.style.cssText = 'position:fixed;inset:0;display:none;'
+      + 'touch-action:none;user-select:none;-webkit-user-select:none;';
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
+    document.body.appendChild(canvas);
+    canvas.addEventListener('touchstart', _onTouch, { passive: false });
+    canvas.addEventListener('click', _onClick);
+    window.addEventListener('resize', function () { if (visible) { _resize(); _render(); } });
+  }
+
+  function _resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const W = window.innerWidth, H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _drawRow(rowX, rowY, rowW, rowH, action, label) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
+    ctx.fillRect(rowX, rowY, rowW, rowH);
+    ctx.fillStyle = '#e8ecf0';
+    ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, rowX + rowW / 2, rowY + rowH / 2);
+    items.push({ x: rowX, y: rowY, w: rowW, h: rowH, action: action });
+  }
+
+  function _render() {
+    const W = window.innerWidth, H = window.innerHeight;
+    ctx.fillStyle = 'rgba(18, 20, 24, 0.45)';
+    ctx.fillRect(0, 0, W, H);
+
+    const rowH = 62;
+    const cardW = Math.min(W * 0.82, 400);
+    const rows = (stage === 'ask') ? 3 : 2;
+    const cardH = 56 + rows * rowH + 8;
+    const cardX = (W - cardW) / 2;
+    const cardY = (H - cardH) / 2;
+
+    ctx.fillStyle = 'rgba(28, 32, 38, 0.72)';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(232, 236, 240, 0.95)';
+    ctx.font = '700 15px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('面部追踪', cardX + 20, cardY + 34);
+
+    const closeCx = cardX + cardW - 26, closeCy = cardY + 34;
+    ctx.strokeStyle = 'rgba(200, 205, 212, 0.65)';
+    ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(closeCx - 7, closeCy - 7); ctx.lineTo(closeCx + 7, closeCy + 7);
+    ctx.moveTo(closeCx + 7, closeCy - 7); ctx.lineTo(closeCx - 7, closeCy + 7);
+    ctx.stroke();
+
+    items = [{ x: closeCx - 18, y: closeCy - 18, w: 36, h: 36, action: '__close' }];
+
+    ctx.strokeStyle = 'rgba(150, 170, 190, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cardX + 14, cardY + 56);
+    ctx.lineTo(cardX + cardW - 14, cardY + 56);
+    ctx.stroke();
+
+    let y = cardY + 60;
+    ctx.textBaseline = 'middle';
+
+    if (stage === 'ask') {
+      ctx.fillStyle = '#d8dae0';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('是否需要使用面部追踪功能？', cardX + 20, y + 30);
+      ctx.fillStyle = 'rgba(150, 170, 190, 0.85)';
+      ctx.font = '400 12px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText('启用后请注意观察角色表情', cardX + 20, y + 52);
+      y += rowH + 6;
+      const halfW = (cardW - 28 - 8) / 2;
+      _drawRow(cardX + 14, y + 4, halfW, rowH - 12, 'allow', '启用');
+      _drawRow(cardX + 14 + halfW + 8, y + 4, halfW, rowH - 12, 'cancel', '关闭');
+    } else if (stage === 'loading') {
+      ctx.fillStyle = '#d8dae0';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('正在加载模型…', cardX + 20, y + rowH / 2);
+    } else if (stage === 'active') {
+      ctx.fillStyle = '#4ade80';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('面部追踪已开启', cardX + 20, y + rowH / 2);
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'stop', '关闭追踪');
+    } else if (stage === 'failed') {
+      ctx.fillStyle = '#ff6666';
+      ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('启动失败，请检查摄像头权限', cardX + 20, y + rowH / 2);
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'retry', '重试');
+    }
+  }
+
+  function _hit(cx, cy) {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
+        if (it.action === '__close' || it.action === 'cancel') { hide(); return; }
+        if (it.action === 'allow' || it.action === 'retry') { _start(); return; }
+        if (it.action === 'stop') { FaceTracker.stop(); hide(); return; }
+      }
+    }
+  }
+
+  function _start() {
+    stage = 'loading';
+    _render();
+    FaceTracker.start().then(function (ok) {
+      if (!visible) return;
+      if (ok) { stage = 'active'; _render(); }
+      else { stage = 'failed'; _render(); }
+    });
+  }
+
+  function _onTouch(e) { e.preventDefault(); e.stopPropagation(); _hit(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }
+  function _onClick(e) { e.preventDefault(); e.stopPropagation(); _hit(e.clientX, e.clientY); }
+
+  function show() {
+    _init(); _resize();
+    visible = true;
+    stage = FaceTracker.isRunning() ? 'active' : 'ask';
+    canvas.style.setProperty('z-index', '2147483646', 'important');
+    canvas.style.setProperty('pointer-events', 'auto', 'important');
+    canvas.style.display = 'block';
+    window.__ZP_PANEL_OPEN__ = true;
+    _render();
+  }
+  function hide() {
+    visible = false;
+    if (canvas) canvas.style.display = 'none';
+    window.__ZP_PANEL_OPEN__ = false;
+  }
+  function toggle() { visible ? hide() : show(); }
+  return { show: show, hide: hide, toggle: toggle, isVisible: function () { return visible; } };
+})();
+
+(function ensureFaceTrackBtn() {
+  function _create() {
+    if (document.getElementById('zpFaceTrackBtn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'zpFaceTrackBtn';
+    btn.setAttribute('aria-label', '面部追踪');
+    btn.textContent = '👤';
+    btn.style.cssText = 'position:absolute;top:16px;right:390px;width:44px;height:44px;'
+      + 'border-radius:50%;background:transparent;border:none;'
+      + 'color:transparent;font-size:0;pointer-events:auto;cursor:pointer;'
+      + 'z-index:220;touch-action:none;';
+    btn.classList.add('hidden');
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      try { FaceTrackPanel.toggle(); } catch (err) {}
+    });
+    const hud = document.getElementById('hud');
+    if (hud) hud.appendChild(btn); else document.body.appendChild(btn);
+  }
+  if (document.body) _create();
+  else document.addEventListener('DOMContentLoaded', _create);
+})();
+
 const MicPanel = (function () {
   let canvas = null, ctx = null, visible = false;
   let items = [], dpr = 1, stage = 'ask';
@@ -7538,6 +7862,16 @@ function mobileHudDrawIcon(id, r, opts = {}) {
     c.moveTo(cx, cy + s*.30); c.lineTo(cx, cy + s*.70);
     c.moveTo(cx - s*.22, cy + s*.70); c.lineTo(cx + s*.22, cy + s*.70);
     c.stroke();
+  } else if (id === 'zpFaceTrackBtn') {
+    c.beginPath();
+    c.ellipse(cx, cy, s*0.75, s*0.88, 0, 0, Math.PI*2);
+    c.stroke();
+    c.beginPath(); c.arc(cx - s*0.30, cy - s*0.18, s*0.10, 0, Math.PI*2); c.fill();
+    c.beginPath(); c.arc(cx + s*0.30, cy - s*0.18, s*0.10, 0, Math.PI*2); c.fill();
+    c.beginPath();
+    c.moveTo(cx - s*0.32, cy + s*0.30);
+    c.quadraticCurveTo(cx, cy + s*0.55, cx + s*0.32, cy + s*0.30);
+    c.stroke();
   }
   c.restore();
 }
@@ -7686,6 +8020,7 @@ function mobileHudSpriteSignature(id) {
   else if (id==='danceBtn') dynamic=`d:${state.dancing?1:0}`;
   else if (id==='micBtn') dynamic=`mc:${MicPanel.isVisible()?1:0}`;
   else if (id==='zpChatBtn') dynamic=`ch:${ChatPanel.isVisible()?1:0}`;
+  else if (id==='zpFaceTrackBtn') dynamic=`ft:${FaceTracker.isRunning()?1:0}`;
   else if (id==='killsBox') dynamic=`k:${state.killCount|0}`;
   const selected = touchLayoutEditing ? (getTouchWorkingSelected()?.id || '') : '';
   return `${visible}|${x}|${dynamic}|e:${selected}`;
@@ -7704,7 +8039,7 @@ function mobileHudDrawSpriteById(id) {
   const kindById = {
     exitBtn:'red', viewBtn:'blue', gyroBtn:'cyan', optBtn:'gold', unstuckBtn:'gold',
     keybindHudBtn:'utility', touchLayoutHudBtn:'gold', fireBtn:'red', reloadBtn2:'blue',
-    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan', micBtn:'cyan', zpChatBtn:'green'
+    jumpBtn:'green', crouchBtn:'cyan', switchBtn:'gold', orbitBtn:'cyan', danceBtn:'cyan', micBtn:'cyan', zpChatBtn:'green', zpFaceTrackBtn:'blue'
   };
   const labels = {
     exitBtn:'退出',
@@ -7722,7 +8057,8 @@ function mobileHudDrawSpriteById(id) {
     orbitBtn:'观赏',
     danceBtn:'动作',
     micBtn:'语音',
-    zpChatBtn:'聊天'
+    zpChatBtn:'聊天',
+    zpFaceTrackBtn:'面部'
   };
 
   mobileHudDrawSprite(id,(r)=>{
@@ -7757,7 +8093,7 @@ function drawMobileHud(force = false) {
   MOBILE_HUD.dpr = mobileHudQualityDpr();
   const ids = [
     'joystick','fireBtn','reloadBtn2','jumpBtn','crouchBtn','switchBtn','plantBtn',
-    'viewBtn','orbitBtn','danceBtn','micBtn','zpChatBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
+    'viewBtn','orbitBtn','danceBtn','micBtn','zpChatBtn','zpFaceTrackBtn','killsBox','exitBtn','gyroBtn','optBtn','unstuckBtn','keybindHudBtn','touchLayoutHudBtn'
   ];
   for (const id of ids) mobileHudDrawSpriteById(id);
   MOBILE_HUD.layoutDirty = false;
@@ -7786,6 +8122,8 @@ function setTouchControlsVisible(v) {
   if (mic) mic.classList.toggle('hidden', !v);
   const chat = document.getElementById('zpChatBtn');
   if (chat) chat.classList.toggle('hidden', !v);
+  const faceTrack = document.getElementById('zpFaceTrackBtn');
+  if (faceTrack) faceTrack.classList.toggle('hidden', !v);
   setMobileCanvasHudMode(!!v || touchLayoutEditing);
   resizeMobileHudCanvas();
 }
