@@ -1032,6 +1032,51 @@ const CORPSE_LIFETIME_MS = 30000;
 
 const colliders = [];
 const impacts = [];
+// ZP-OPT1 空间网格：colliders 分桶加速查询
+const ZP_GRID_CELL = 16;
+const _zpGrid = new Map();
+let _zpGridDirty = true;
+let _zpLastCollidersLen = -1;
+function _zpRebuildGrid() {
+  _zpGrid.clear();
+  for (const c of colliders) {
+    const minX = Math.floor(c.min.x / ZP_GRID_CELL);
+    const maxX = Math.floor(c.max.x / ZP_GRID_CELL);
+    const minZ = Math.floor(c.min.z / ZP_GRID_CELL);
+    const maxZ = Math.floor(c.max.z / ZP_GRID_CELL);
+    for (let x = minX; x <= maxX; x++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        const k = x + ',' + z;
+        let arr = _zpGrid.get(k);
+        if (!arr) { arr = []; _zpGrid.set(k, arr); }
+        arr.push(c);
+      }
+    }
+  }
+  _zpGridDirty = false;
+  _zpLastCollidersLen = colliders.length;
+}
+function _zpQueryGrid(x, z, r) {
+  if (_zpGridDirty || _zpLastCollidersLen !== colliders.length) _zpRebuildGrid();
+  const out = [];
+  const seen = new Set();
+  const minX = Math.floor((x - r) / ZP_GRID_CELL);
+  const maxX = Math.floor((x + r) / ZP_GRID_CELL);
+  const minZ = Math.floor((z - r) / ZP_GRID_CELL);
+  const maxZ = Math.floor((z + r) / ZP_GRID_CELL);
+  for (let gx = minX; gx <= maxX; gx++) {
+    for (let gz = minZ; gz <= maxZ; gz++) {
+      const arr = _zpGrid.get(gx + ',' + gz);
+      if (!arr) continue;
+      for (const c of arr) {
+        if (seen.has(c)) continue;
+        seen.add(c);
+        out.push(c);
+      }
+    }
+  }
+  return out;
+}
 const keys = {};
 
 // ==================== 自定义键位系统 ====================
@@ -2565,8 +2610,17 @@ function handleServerMsg(msg) {
         otherPlayers.set(p.id, op);
       }
       if (!op.targetPos) op.targetPos = new THREE.Vector3();
-      op.targetPos.set(p.x, p.y, p.z);
-      op.targetYaw = p.yaw;
+      if (!op._posBuffer) op._posBuffer = [];
+      const __nowMs = performance.now();
+      op._posBuffer.push({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, at: __nowMs });
+      while (op._posBuffer.length > 12) op._posBuffer.shift();
+      const __playAt = __nowMs - 80;
+      let __tgt = op._posBuffer[0];
+      for (let __i = op._posBuffer.length - 1; __i >= 0; __i--) {
+        if (op._posBuffer[__i].at <= __playAt) { __tgt = op._posBuffer[__i]; break; }
+      }
+      op.targetPos.set(__tgt.x, __tgt.y, __tgt.z);
+      op.targetYaw = __tgt.yaw;
       op.visible = p.alive;
       op.group.visible = p.alive;
       // 尸体系统：检测 alive true->false
@@ -3115,13 +3169,17 @@ function updateOtherPlayers(dt) {
     op.vrm.scene.visible = __d2 <= __cullSq;
     if (!op.vrm.scene.visible) continue;
 
-    updateVRMAvatarAnimation(op.vrm, {
-      jumping: !!op._jumping,
-      crouching: !!op.crouching && !op._jumping,
-      moving: !!op.moving,
-      dancing: !!op.dancing,
-    }, dt);
-    op.vrm.update(dt);
+    op._skipCounter = (op._skipCounter || 0) + 1;
+    const __zpFar = op.group.position.distanceToSquared(camera.position) > 400;
+    if (!__zpFar || op._skipCounter % 2 === 0) {
+      updateVRMAvatarAnimation(op.vrm, {
+        jumping: !!op._jumping,
+        crouching: !!op.crouching && !op._jumping,
+        moving: !!op.moving,
+        dancing: !!op.dancing,
+      }, dt);
+      op.vrm.update(dt);
+    }
   }
 }
 
@@ -4247,6 +4305,8 @@ function spawnGasTankAt(x, z) {
   const t = gasTankPrototype.clone(true);
   t.position.set(x, 0, z);
   t.rotation.y = Math.random() * Math.PI * 2;
+  t.updateMatrix();
+  t.matrixAutoUpdate = false;
   scene.add(t);
   const col = {
     min: new THREE.Vector3(x - 0.7, 0, z - 0.7),
@@ -4400,6 +4460,8 @@ function spawnWallClockAt(x, y, z, ry) {
   const c = wallClockPrototype.clone(true);
   c.position.set(x, y, z);
   c.rotation.y = ry || 0;
+  c.updateMatrix();
+  c.matrixAutoUpdate = false;
   scene.add(c);
 
   const cw = 0.6, ch = 0.6, cd = 0.15;
@@ -4467,6 +4529,8 @@ function spawnWallLampAt(x, y, z, ry) {
   const l = wallLampPrototype.clone(true);
   l.position.set(x, y, z);
   l.rotation.y = ry || 0;
+  l.updateMatrix();
+  l.matrixAutoUpdate = false;
   scene.add(l);
   wallLamps.push({ mesh: l, x, y, z, ry });
 }
@@ -4526,6 +4590,8 @@ function spawnPottedPlantAt(x, y, z, ry) {
   const p = pottedPlantPrototype.clone(true);
   p.position.set(x, y, z);
   p.rotation.y = ry || 0;
+  p.updateMatrix();
+  p.matrixAutoUpdate = false;
   scene.add(p);
 
   const pw = 0.45, ph = 0.5, pd = 0.45;
@@ -4590,6 +4656,8 @@ function spawnVintageRadioAt(x, y, z, ry) {
   const r = vintageRadioPrototype.clone(true);
   r.position.set(x, y, z);
   r.rotation.y = ry || 0;
+  r.updateMatrix();
+  r.matrixAutoUpdate = false;
   scene.add(r);
   colliders.push({
     min: new THREE.Vector3(x - 0.25, y, z - 0.25),
@@ -4712,6 +4780,8 @@ function spawnBarrelAt(x, z) {
   const b = barrelPrototype.clone(true);
   b.position.set(x, 0, z);
   b.rotation.y = Math.random() * Math.PI * 2;
+  b.updateMatrix();
+  b.matrixAutoUpdate = false;
   scene.add(b);
   colliders.push({
     min: new THREE.Vector3(x - 0.6, 0, z - 0.6),
@@ -4910,6 +4980,7 @@ function buildFromServerMap(mapData, tex) {
     inst.castShadow = true;
     inst.receiveShadow = true;
     inst.instanceMatrix.needsUpdate = true;
+    inst.matrixAutoUpdate = false;
     scene.add(inst);
     totalDrawn += list.length;
   }
@@ -4937,7 +5008,8 @@ function addSiteMarker(pos, color) {
 /* ==================== [E] 玩家移动 ==================== */
 function aabbHit(x, y, z, r, h) {
   const top = y + h;
-  for (const c of colliders) {
+  const __cells = _zpQueryGrid(x, z, r + 0.5);
+  for (const c of __cells) {
     if (x + r > c.min.x && x - r < c.max.x &&
         z + r > c.min.z && z - r < c.max.z &&
         top > c.min.y && y < c.max.y) return true;
@@ -6314,7 +6386,8 @@ function updateLocalBullets(dt) {
     b.life -= dt;
     let hitWall = false;
     const p = b.mesh.position;
-    for (const c of colliders) {
+    const __bcells = _zpQueryGrid(p.x, p.z, 1.0);
+    for (const c of __bcells) {
       if (p.x > c.min.x && p.x < c.max.x && p.y > c.min.y && p.y < c.max.y && p.z > c.min.z && p.z < c.max.z) {
         if (c.isGasTank || c.isBarrel) {
           spawnImpact(p, 0xffcc33);
@@ -6536,6 +6609,13 @@ function predictLocalHit(origin, dir) {
   let best = null;
   for (const op of otherPlayers.values()) {
     if (!op.visible || !op.alive) continue;
+    const _dx = op.group.position.x - origin.x;
+    const _dy = op.group.position.y + 1.0 - origin.y;
+    const _dz = op.group.position.z - origin.z;
+    const _proj = _dx * dir.x + _dy * dir.y + _dz * dir.z;
+    if (_proj < 0 || _proj > nearestWall) continue;
+    const _perp2 = (_dx * _dx + _dy * _dy + _dz * _dz) - _proj * _proj;
+    if (_perp2 > 2.25) continue;
     const ray = worldToOtherLocal(origin, dir, op);
     for (const hb of CLIENT_HITBOXES) {
       const min = { x: hb.min[0], y: hb.min[1], z: hb.min[2] };
