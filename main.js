@@ -18,7 +18,7 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { N8AOPass } from 'n8ao';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
@@ -4060,12 +4060,11 @@ function setupPostProcessing() {
     );
     composer.addPass(bloomPass);
 
-    // n8ao：轻量 AO，替代 SSAOPass + GTAOPass
-    ssaoPass = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
-    ssaoPass.configuration.aoRadius = 1.0;
-    ssaoPass.configuration.distanceFalloff = 1.0;
-    ssaoPass.configuration.intensity = 2.0;
-    ssaoPass.configuration.halfRes = true;
+    ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
+    ssaoPass.kernelRadius = 8;
+    ssaoPass.minDistance = 0.005;
+    ssaoPass.maxDistance = 0.15;
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
     ssaoPass.enabled = false;
     composer.addPass(ssaoPass);
 
