@@ -2053,6 +2053,7 @@ function openSocket(resetCandidates = false) {
 
   try {
     const socket = new WebSocket(url);
+    socket.binaryType = 'arraybuffer';
     ws = socket;
 
     timeout = setTimeout(() => {
@@ -2155,6 +2156,15 @@ function openSocket(resetCandidates = false) {
 
     socket.onmessage = (ev) => {
       if (generation !== socketGeneration) return;
+      // 二进制 = 音频帧
+      if (ev.data instanceof ArrayBuffer) {
+        if (ev.data.byteLength < 4) return;
+        const view = new DataView(ev.data);
+        const pid = view.getUint16(0);
+        const pcm = new Int16Array(ev.data, 2);
+        try { VoiceChat.receive(pid, pcm); } catch (e) {}
+        return;
+      }
       let msg;
       const _dec = decryptMsg(ev.data);
       if (!_dec) return;
@@ -5673,6 +5683,127 @@ const KillIcon = (function () {
   return { flash };
 })();
 
+const VoiceChat = (function () {
+  const SAMPLE_RATE = 16000;
+  const FRAME_SAMPLES = 2048;
+  let micCtx = null, playCtx = null;
+  let stream = null, source = null, processor = null;
+  let started = false;
+  let _seqSent = 0;
+
+  function _resample(f32, from, to) {
+    if (from === to) return f32;
+    const ratio = from / to;
+    const out = new Float32Array(Math.floor(f32.length / ratio));
+    for (let i = 0; i < out.length; i++) out[i] = f32[Math.floor(i * ratio)];
+    return out;
+  }
+
+  function _toInt16(f32) {
+    const out = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      let v = f32[i];
+      if (v > 1) v = 1; else if (v < -1) v = -1;
+      out[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+    }
+    return out;
+  }
+
+  async function start() {
+    if (started) return true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn('[VOICE] mediaDevices 不可用');
+      return false;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
+    } catch (e) {
+      console.warn('[VOICE] getUserMedia 失败', e);
+      return false;
+    }
+    try {
+      micCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+      if (micCtx.state === 'suspended') await micCtx.resume();
+      source = micCtx.createMediaStreamSource(stream);
+      processor = micCtx.createScriptProcessor(FRAME_SAMPLES, 1, 1);
+      processor.onaudioprocess = (e) => {
+        if (!started) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const rs = _resample(input, micCtx.sampleRate, SAMPLE_RATE);
+        const pcm = _toInt16(rs);
+        _seqSent++;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try { ws.send(pcm.buffer); } catch (err) {}
+        }
+      };
+      source.connect(processor);
+      processor.connect(micCtx.destination);
+      started = true;
+      console.log('[VOICE] 已启动，sr=' + micCtx.sampleRate);
+      return true;
+    } catch (e) {
+      console.warn('[VOICE] 初始化失败', e);
+      stop();
+      return false;
+    }
+  }
+
+  function stop() {
+    started = false;
+    try { processor && processor.disconnect(); } catch (e) {}
+    try { source && source.disconnect(); } catch (e) {}
+    try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { micCtx && micCtx.close(); } catch (e) {}
+    processor = null; source = null; stream = null; micCtx = null;
+  }
+
+  function _ensurePlayCtx() {
+    if (!playCtx) {
+      playCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    }
+    if (playCtx.state === 'suspended') playCtx.resume();
+    return playCtx;
+  }
+
+  const _recvQueues = new Map();
+
+  function receive(playerId, pcm) {
+    const ctx = _ensurePlayCtx();
+    let q = _recvQueues.get(playerId);
+    if (!q) {
+      q = { queue: [], playing: false, nextTime: 0 };
+      _recvQueues.set(playerId, q);
+    }
+    const f32 = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) f32[i] = pcm[i] / 32768;
+    q.queue.push(f32);
+    if (q.queue.length > 15) q.queue.shift();
+    _drain(playerId, q, ctx);
+  }
+
+  function _drain(playerId, q, ctx) {
+    if (q.playing) return;
+    if (q.queue.length === 0) return;
+    q.playing = true;
+    const frame = q.queue.shift();
+    const buf = ctx.createBuffer(1, frame.length, SAMPLE_RATE);
+    buf.copyToChannel(frame, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    const now = ctx.currentTime;
+    const startAt = Math.max(now + 0.02, q.nextTime || 0);
+    src.start(startAt);
+    q.nextTime = startAt + buf.duration;
+    src.onended = () => { q.playing = false; _drain(playerId, q, ctx); };
+  }
+
+  return { start, stop, receive, isStarted: () => started };
+})();
+
 const MicPanel = (function () {
   let canvas = null, ctx = null, visible = false;
   let items = [], dpr = 1, stage = 'ask';
@@ -5760,13 +5891,20 @@ const MicPanel = (function () {
       ctx.font = '600 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('正在连接语音服务器…', cardX + 20, y + rowH / 2);
+    } else if (stage === 'active') {
+      ctx.fillStyle = '#4ade80';
+      ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('语音已开启', cardX + 20, y + rowH / 2);
+      y += rowH;
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'close2', '关闭');
     } else if (stage === 'failed') {
       ctx.fillStyle = '#ff6666';
       ctx.font = '700 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText('语音服务器连接失败', cardX + 20, y + rowH / 2);
+      ctx.fillText('麦克风获取失败，请检查权限', cardX + 20, y + rowH / 2);
       y += rowH;
-      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'close2', '关闭');
+      _drawRow(cardX + 14, y + 4, cardW - 28, rowH - 12, 'retry', '重试');
     }
   }
 
@@ -5786,6 +5924,7 @@ const MicPanel = (function () {
       if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) {
         if (it.action === '__close' || it.action === 'cancel' || it.action === 'close2') { hide(); return; }
         if (it.action === 'allow') { _connect(); return; }
+        if (it.action === 'retry') { _connect(); return; }
       }
     }
   }
@@ -5793,7 +5932,17 @@ const MicPanel = (function () {
   function _connect() {
     stage = 'connecting';
     _render();
-    setTimeout(() => { if (!visible) return; stage = 'failed'; _render(); }, 1200);
+    VoiceChat.start().then((ok) => {
+      if (!visible) return;
+      if (ok) {
+        stage = 'active';
+        _render();
+        setTimeout(() => hide(), 400);
+      } else {
+        stage = 'failed';
+        _render();
+      }
+    });
   }
 
   function _onTouch(e) { e.preventDefault(); e.stopPropagation(); _hit(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }
