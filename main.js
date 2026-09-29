@@ -1840,8 +1840,21 @@ function disableGyro() {
 }
 
 function toggleGyro() {
-  if (gyro.enabled) disableGyro();
-  else enableGyro();
+  if (gyro.enabled) {
+    disableGyro();
+    setMenuNetStatus('陀螺仪已关闭');
+    return;
+  }
+  setMenuNetStatus('陀螺仪启动中…');
+  enableGyro().then(function (ok) {
+    if (ok) {
+      setMenuNetStatus('陀螺仪已开启 · 校准中');
+      updateGyroButton();
+    } else {
+      setMenuNetStatus('陀螺仪不可用（设备不支持或权限被拒）');
+      updateGyroButton();
+    }
+  });
 }
 
 
@@ -8126,6 +8139,8 @@ function setTouchControlsVisible(v) {
   if (chat) chat.classList.toggle('hidden', !v);
   const faceTrack = document.getElementById('zpFaceTrackBtn');
   if (faceTrack) faceTrack.classList.toggle('hidden', !v);
+  const gyro = document.getElementById('gyroBtn');
+  if (gyro) gyro.classList.toggle('hidden', !v);
   setMobileCanvasHudMode(!!v || touchLayoutEditing);
   resizeMobileHudCanvas();
 }
