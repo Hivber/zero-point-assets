@@ -659,7 +659,7 @@ function applyQualitySetting(key) {
     }
     qlog('[RT] 地面镜面 ' + __isUltra);
   } catch (e) { console.warn('[RT] 切换失败', e); }
-  // GTAO 已被 n8ao 取代，此处空操作
+  // GTAO 已移除
   // God Ray — 已废弃，永久关闭
   try { if (godRayPass) { godRayPass.enabled = false; godRayPass.uniforms.uEnabled.value = 0; } } catch (e) {}
   // SMAA 抗锯齿
@@ -4109,7 +4109,7 @@ function setupPostProcessing() {
       qlog('[MAX] SSRPass OK');
     } catch (e) { qlog('[MAX] SSRPass 失败', e); }
 
-    // GTAO 已由 n8ao 替代
+    // GTAO 已移除
     gtaoPass = null;
 
     // God Rays
