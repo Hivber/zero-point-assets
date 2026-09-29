@@ -2827,6 +2827,12 @@ function ensureAudio() {
   try {
     if (window.Howler && Howler.ctx && Howler.ctx.state === 'suspended') Howler.ctx.resume();
   } catch (e) {}
+  // 顺手解锁语音接收（必须在用户手势里调用）
+  try {
+    if (window.VoiceChat && VoiceChat.unlockPlayback) {
+      VoiceChat.unlockPlayback();
+    }
+  } catch (e) {}
 }
 // ===== Howler 音效系统 =====
 const ZP_SOUNDS = {};
@@ -5801,7 +5807,22 @@ const VoiceChat = (function () {
     src.onended = () => { q.playing = false; _drain(playerId, q, ctx); };
   }
 
-  return { start, stop, receive, isStarted: () => started };
+  function unlockPlayback() {
+    try {
+      const ctx = _ensurePlayCtx();
+      if (ctx.state === 'suspended') {
+        // 返回 Promise，调用方在用户手势里 await 更靠谱
+        return ctx.resume().then(() => {
+          console.log('[VOICE] 播放上下文已解锁:', ctx.state);
+          return ctx.state === 'running';
+        }).catch(e => { console.warn('[VOICE] resume 失败', e); return false; });
+      }
+      console.log('[VOICE] 播放上下文已就绪:', ctx.state);
+      return Promise.resolve(ctx.state === 'running');
+    } catch (e) { console.warn('[VOICE] unlock 异常', e); return Promise.resolve(false); }
+  }
+
+  return { start, stop, receive, isStarted: () => started, unlockPlayback };
 })();
 
 const MicPanel = (function () {
