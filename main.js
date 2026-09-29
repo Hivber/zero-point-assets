@@ -7384,6 +7384,7 @@ function roleAt(cx, cy) {
     if (el.closest('#danceBtn')) return 'danceBtn';
     if (el.closest('#micBtn')) return 'micBtn';
     if (el.closest('#zpChatBtn')) return 'zpChatBtn';
+    if (el.closest('#zpFaceTrackBtn')) return 'zpFaceTrackBtn';
     if (el.closest('#joystick')) return 'joy';
     if (el.closest('#touchLayoutHudBtn')) return 'touchLayoutBtn';
     if (el.closest('#keybindPanel')) return 'keybindUI';
@@ -7451,6 +7452,7 @@ function setupTouch() {
       else if (role === 'danceBtn') { ActionPanel.toggle(); }
       else if (role === 'micBtn') { MicPanel.toggle(); }
       else if (role === 'zpChatBtn') { ChatPanel.toggle(); }
+      else if (role === 'zpFaceTrackBtn') { FaceTrackPanel.toggle(); }
       else if (role === 'touchLayoutBtn') openTouchLayoutPanel();
       // 键位设置面板和触控布局编辑器需要保留浏览器的 click/pointer 事件，不能在 touchstart 时阻止默认行为。
       if (role !== 'keybindUI' && role !== 'touchLayoutBtn') e.preventDefault();
