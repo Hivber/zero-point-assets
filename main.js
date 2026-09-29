@@ -3414,6 +3414,23 @@ const ChatPanel = (function () {
   else document.addEventListener('DOMContentLoaded', _create);
 })();
 
+/* ==================== [HUD-POS] 给 gyroBtn 补定位 ==================== */
+(function ensureGyroBtnPos() {
+  function _fix() {
+    const btn = document.getElementById('gyroBtn');
+    if (!btn) return;
+    // 排在最右侧一排的左端：zpFaceTrackBtn (right:390) 的左侧
+    btn.style.cssText = 'position:absolute;top:16px;right:442px;width:44px;height:44px;'
+      + 'border-radius:50%;background:transparent;border:none;'
+      + 'color:transparent;font-size:0;pointer-events:auto;cursor:pointer;'
+      + 'z-index:220;touch-action:none;';
+  }
+  if (document.body) _fix();
+  else document.addEventListener('DOMContentLoaded', _fix);
+  // 保险：页面切换时再补一次
+  window.addEventListener('resize', _fix);
+})();
+
 /* ==================== [B] 初始化 ==================== */
 
 function withTimeout(promise, ms, label) {
