@@ -3167,6 +3167,15 @@ function updateOtherPlayers(dt) {
     op.vrm.scene.visible = __d2 <= __cullSq;
     if (!op.vrm.scene.visible) continue;
 
+    // ZP-OPT-SHADOW②: 15m 外玩家不投射阴影（视觉无差异，只省 GPU）
+    const __wantShadow = __d2 < 225;
+    if (op._castShadow !== __wantShadow) {
+      op._castShadow = __wantShadow;
+      op.vrm.scene.traverse((o) => {
+        if (o.isMesh) o.castShadow = __wantShadow;
+      });
+    }
+
     op._skipCounter = (op._skipCounter || 0) + 1;
     const __zpFar = op.group.position.distanceToSquared(camera.position) > 400;
     if (!__zpFar || op._skipCounter % 2 === 0) {
@@ -8152,6 +8161,13 @@ function loop() {
         colorGradePass.uniforms.uTime.value = performance.now() / 1000.0;
       }
     } catch (e) {}
+  }
+
+  // ZP-OPT-SHADOW①: 阴影降频更新（每 2 帧一次），视觉几乎无差异
+  if (renderer && renderer.shadowMap) {
+    loop._shadowFrame = (loop._shadowFrame || 0) + 1;
+    if (renderer.shadowMap.autoUpdate !== false) renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = (loop._shadowFrame % 2 === 0);
   }
 
   // __zpFixBloom：只有顶尖档走后期处理，其他档直接渲染（避免 Bloom 过曝）
