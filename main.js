@@ -3756,6 +3756,26 @@ async function init() {
       console.warn('[BOOT-GATE] 拒绝进入菜单，缺失:', _fail, window.__ZP_BOOT_STATE__);
       return;
     }
+    // ===== 后处理 shader 预热（loading 消失前）=====
+    try {
+      const __t0 = performance.now();
+      console.log('[WARMUP] 预热后处理 shader...');
+      if (composer) {
+        const __passes = [renderPass, bloomPass, ssaoPass, outputPass, colorGradePass,
+                          bokehPass, afterimagePass, ssrPass, gtaoPass, godRayPass, smaaPass];
+        const __orig = new Map();
+        for (const p of __passes) {
+          if (p && p.enabled !== undefined) {
+            __orig.set(p, p.enabled);
+            p.enabled = true;
+          }
+        }
+        try { composer.render(); } catch (e) { console.warn('[WARMUP] render 失败', e); }
+        for (const [p, en] of __orig) p.enabled = en;
+      }
+      console.log('[WARMUP] 完成 ' + (performance.now() - __t0).toFixed(0) + 'ms');
+    } catch (e) { console.warn('[WARMUP] 异常', e); }
+
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('menu').classList.remove('hidden');
     console.log('[BOOT-GATE] 通过，状态:', window.__ZP_BOOT_STATE__);
@@ -7872,17 +7892,9 @@ function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  // 菜单里不渲染 3D（DOM 菜单不需要），只保持场景"活着"
+  // 菜单里完全不渲染 3D，只保留 canvas 最后一帧。
+  // 进入游戏时第一帧会自动渲染（state.playing = true）。
   if (!state.playing) {
-    const now = performance.now();
-    if (!loop._lastMenuRender || now - loop._lastMenuRender > 200) {
-      loop._lastMenuRender = now;
-      if (playerVRM) playerVRM.update(0);
-      try {
-        if (composer && currentQuality === 'ultraHi') composer.render();
-        else renderer.render(scene, camera);
-      } catch (e) {}
-    }
     return;
   }
 
