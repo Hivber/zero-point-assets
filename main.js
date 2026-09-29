@@ -23,7 +23,6 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
-  PROTOCOL_VERSION, CLIENT_VERSION, RESOURCE_VERSION,
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
   encryptMsg, decryptMsg,
 } from './models/client-infra.js';
