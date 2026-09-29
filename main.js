@@ -118,7 +118,7 @@ function paintAssetProgress(force) {
 })();
 
 // ===== 多 CDN 自动择优 =====
-const CDN_HASH = 'f30f87e';
+const CDN_HASH = 'cac2519';
 const CDN_CANDIDATES = [
   // ===== 官方 jsDelivr 节点 =====
   'https://cdn.jsdelivr.net/gh/Hivber/zero-point-assets@' + CDN_HASH + '/',
