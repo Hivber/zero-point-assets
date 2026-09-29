@@ -2154,6 +2154,9 @@ function openSocket(resetCandidates = false) {
         if (Array.isArray(msg.wallClocks)) {
           spawnWallClocksFromServer(msg.wallClocks);
         }
+        if (Array.isArray(msg.wallLamps)) {
+          spawnWallLampsFromServer(msg.wallLamps);
+        }
         if (Array.isArray(msg.pottedPlants)) {
           spawnPottedPlantsFromServer(msg.pottedPlants);
         }
@@ -3144,6 +3147,7 @@ function updateDistanceCull() {
   const farSq = DIST_CULL_DECOR_SQ;
 
   _cullArr(wallClocks, px, pz, farSq);
+  _cullArr(wallLamps, px, pz, farSq);
   _cullArr(pottedPlants, px, pz, farSq);
   _cullArr(vintageRadios, px, pz, farSq);
   _cullArr(gasTanks, px, pz, farSq);
@@ -3700,6 +3704,8 @@ async function init() {
   setLoading(73, '加载挂钟…');
   await loadWallClock();
   try { window.__ZP_BOOT_STAGE__ = 'plant'; } catch (e) {}
+  setLoading(73, '加载壁灯…');
+  await loadWallLamp();
   setLoading(74, '加载盆栽…');
   await loadPottedPlant();
   setLoading(74, '加载复古收发机…');
@@ -4356,6 +4362,9 @@ function updatePickups(dt) {
 }
 
 let wallClockPrototype = null;
+let wallLampPrototype = null;
+let pendingWallLampPositions = null;
+const wallLamps = [];
 let pendingWallClockPositions = null;
 const wallClocks = [];
 
@@ -4425,6 +4434,60 @@ function spawnWallClocksFromServer(list) {
     }
   }
   console.log('[CLOCK] 按服务端同步生成了 ' + wallClocks.length + ' 个');
+}
+
+async function loadWallLamp() {
+  return new Promise((resolve) => {
+    const loader = new GLTFLoader();
+    loader.load(ASSET_BASE + 'models/wall_lamp/industrial_wall_lamp_1k.gltf', (gltf) => {
+      wallLampPrototype = gltf.scene;
+      wallLampPrototype.traverse(o => {
+        if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; }
+      });
+      const box = new THREE.Box3().setFromObject(wallLampPrototype);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      wallLampPrototype.scale.setScalar(0.5 / maxDim);
+      console.log('[LAMP] 模型加载成功 scale=' + (0.5 / maxDim).toFixed(4));
+      if (Array.isArray(pendingWallLampPositions) && pendingWallLampPositions.length > 0) {
+        const cached = pendingWallLampPositions.slice();
+        pendingWallLampPositions = null;
+        spawnWallLampsFromServer(cached);
+      }
+      resolve();
+    }, undefined, (err) => {
+      console.warn('[LAMP] 模型加载失败:', err);
+      resolve();
+    });
+  });
+}
+
+function spawnWallLampAt(x, y, z, ry) {
+  if (!wallLampPrototype) return;
+  const l = wallLampPrototype.clone(true);
+  l.position.set(x, y, z);
+  l.rotation.y = ry || 0;
+  scene.add(l);
+  wallLamps.push({ mesh: l, x, y, z, ry });
+}
+
+function spawnWallLampsFromServer(list) {
+  if (!wallLampPrototype) {
+    console.log('[LAMP] 模型未就绪，缓存坐标 ' + (Array.isArray(list) ? list.length : 0));
+    pendingWallLampPositions = Array.isArray(list) ? list.slice() : [];
+    return;
+  }
+  for (const l of wallLamps) {
+    if (l.mesh && l.mesh.parent) l.mesh.parent.remove(l.mesh);
+  }
+  wallLamps.length = 0;
+  if (!Array.isArray(list)) return;
+  for (const p of list) {
+    if (typeof p.x === 'number' && typeof p.y === 'number' && typeof p.z === 'number') {
+      spawnWallLampAt(p.x, p.y, p.z, p.ry || 0);
+    }
+  }
+  console.log('[LAMP] 按服务端同步生成了 ' + wallLamps.length + ' 个');
 }
 
 let pottedPlantPrototype = null;
