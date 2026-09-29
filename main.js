@@ -1026,6 +1026,11 @@ const CORPSE_LIFETIME_MS = 30000;
 
 const colliders = [];
 const impacts = [];
+// ZP-TEMPVEC 全局临时向量，消除热路径 GC
+const _zpTV1 = new THREE.Vector3();
+const _zpTV2 = new THREE.Vector3();
+const _zpTV3 = new THREE.Vector3();
+const _zpTV4 = new THREE.Vector3();
 // ZP-OPT1 空间网格：colliders 分桶加速查询
 const ZP_GRID_CELL = 16;
 const _zpGrid = new Map();
@@ -5080,14 +5085,14 @@ function updatePlayer(dt) {
   fz -= touch.moveY;
   const len = Math.hypot(fx, fz);
   if (len > 1) { fx /= len; fz /= len; }
-  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-  const move = new THREE.Vector3();
-  move.addScaledVector(forward, fz);
-  move.addScaledVector(right, fx);
+  _zpTV1.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  _zpTV2.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  _zpTV3.set(0, 0, 0);
+  _zpTV3.addScaledVector(_zpTV1, fz);
+  _zpTV3.addScaledVector(_zpTV2, fx);
   const moveSpeed = player.crouching ? CROUCH_PLAYER_SPEED : player.speed;
-  tryMovePlayer(move.x * moveSpeed * dt, 0);
-  tryMovePlayer(0, move.z * moveSpeed * dt);
+  tryMovePlayer(_zpTV3.x * moveSpeed * dt, 0);
+  tryMovePlayer(0, _zpTV3.z * moveSpeed * dt);
   player.moving = len > 0.05;
   const prevY = player.pos.y;
   player.vy -= GRAVITY * dt;
@@ -6556,28 +6561,30 @@ function getClientSpread(moving, airborne, crouching = false) {
 
 function applySpreadClient(yaw, pitch, spreadDeg, shotSeq) {
   const cp = Math.cos(pitch);
-  const forward = new THREE.Vector3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp).normalize();
-  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
-  const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+  _zpTV1.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp).normalize();
+  _zpTV2.set(Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
+  _zpTV3.crossVectors(_zpTV2, _zpTV1).normalize();
   const rnd = mulberry32Client(shotSeedClient(myId, shotSeq));
   const radius = Math.sqrt(rnd());
   const angle = rnd() * Math.PI * 2;
   const tanSpread = Math.tan(spreadDeg * Math.PI / 180);
   const c = Math.cos(angle) * tanSpread * radius;
   const s2 = Math.sin(angle) * tanSpread * radius;
-  return forward.clone().addScaledVector(right, c).addScaledVector(up, s2).normalize();
+  return _zpTV4.copy(_zpTV1).addScaledVector(_zpTV2, c).addScaledVector(_zpTV3, s2).normalize();
 }
 
 function getAimRay() {
   const yaw = player.yaw;
   const pitch = player.pitch;
   const cp = Math.cos(pitch);
-  const dir = new THREE.Vector3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp).normalize();
-  return { yaw, pitch, dir };
+  _zpTV1.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp).normalize();
+  return { yaw, pitch, dir: _zpTV1 };
 }
 
 function getShotOrigin() {
-  return player.pos.clone().add(new THREE.Vector3(0, state.thirdPerson ? (state.crouching ? 0.98 : 1.25) : (state.crouching ? 1.35 : 1.65), 0));
+  _zpTV2.copy(player.pos);
+  _zpTV2.y += state.thirdPerson ? (state.crouching ? 0.98 : 1.25) : (state.crouching ? 1.35 : 1.65);
+  return _zpTV2;
 }
 
 function worldToOtherLocal(origin, dir, op) {
