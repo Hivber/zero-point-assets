@@ -18,7 +18,7 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { N8AOPass } from 'n8ao';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
@@ -659,8 +659,7 @@ function applyQualitySetting(key) {
     }
     qlog('[RT] 地面镜面 ' + __isUltra);
   } catch (e) { console.warn('[RT] 切换失败', e); }
-  // GTAO
-  try { if (gtaoPass) { gtaoPass.enabled = __isUltra; qlog('[MAX] GTAO ' + __isUltra); } } catch (e) {}
+  // GTAO 已被 n8ao 取代，此处空操作
   // God Ray — 已废弃，永久关闭
   try { if (godRayPass) { godRayPass.enabled = false; godRayPass.uniforms.uEnabled.value = 0; } } catch (e) {}
   // SMAA 抗锯齿
@@ -3825,7 +3824,7 @@ async function init() {
       console.error('[WARMUP] 预热后处理 shader...');
       if (composer) {
         const __passes = [renderPass, bloomPass, ssaoPass, outputPass, colorGradePass,
-                          bokehPass, afterimagePass, gtaoPass, smaaPass];
+                          bokehPass, afterimagePass, smaaPass];
         const __orig = new Map();
         for (const p of __passes) {
           if (p && p.enabled !== undefined) {
@@ -4006,12 +4005,13 @@ function setupPostProcessing() {
     );
     composer.addPass(bloomPass);
 
-    ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
-    ssaoPass.kernelRadius = 8;
-    ssaoPass.minDistance = 0.005;
-    ssaoPass.maxDistance = 0.15;
-    ssaoPass.output = SSAOPass.OUTPUT.Default;
-    ssaoPass.enabled = false;   // 顶尖档才开，init 里默认关
+    // n8ao：轻量 AO，替代 SSAOPass + GTAOPass
+    ssaoPass = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
+    ssaoPass.configuration.aoRadius = 1.0;
+    ssaoPass.configuration.distanceFalloff = 1.0;
+    ssaoPass.configuration.intensity = 2.0;
+    ssaoPass.configuration.halfRes = true;
+    ssaoPass.enabled = false;
     composer.addPass(ssaoPass);
 
     outputPass = new OutputPass();
@@ -4055,15 +4055,8 @@ function setupPostProcessing() {
       qlog('[MAX] SSRPass OK');
     } catch (e) { qlog('[MAX] SSRPass 失败', e); }
 
-    // GTAO
-    try {
-      gtaoPass = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
-      gtaoPass.output = GTAOPass.OUTPUT.Default;
-      gtaoPass.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.0, thickness: 1.0, scale: 1.0 });
-      gtaoPass.enabled = false;
-      composer.addPass(gtaoPass);
-      qlog('[RT] GTAOPass OK');
-    } catch (e) { qlog('[RT] GTAOPass 失败', e); }
+    // GTAO 已由 n8ao 替代
+    gtaoPass = null;
 
     // God Rays
     try {
