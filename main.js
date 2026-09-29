@@ -647,14 +647,8 @@ function applyQualitySetting(key) {
   try { if (bokehPass) { bokehPass.enabled = __isUltra; qlog('[MAX] 景深 ' + __isUltra); } } catch (e) {}
   // 运动模糊
   try { if (afterimagePass) { afterimagePass.enabled = __isUltra; qlog('[MAX] 运动模糊 ' + __isUltra); } } catch (e) {}
-  // SSR（光追：屏幕空间反射）
-  try {
-    if (ssrPass) {
-      ssrPass.enabled = __isUltra;
-      if (__isUltra && typeof ssrPass.opacity === 'number') ssrPass.opacity = 0.6;
-      qlog('[RT] SSR ' + __isUltra);
-    }
-  } catch (e) {}
+  // SSR — 与 Reflector 功能重复，永久关闭
+  try { if (ssrPass) { ssrPass.enabled = false; } } catch (e) {}
   // 光追：地面镜面（仅顶尖画质）
   try {
     if (__isUltra) {
@@ -667,8 +661,8 @@ function applyQualitySetting(key) {
   } catch (e) { console.warn('[RT] 切换失败', e); }
   // GTAO
   try { if (gtaoPass) { gtaoPass.enabled = __isUltra; qlog('[MAX] GTAO ' + __isUltra); } } catch (e) {}
-  // God Ray 体积光
-  try { if (godRayPass) { godRayPass.enabled = __isUltra; godRayPass.uniforms.uEnabled.value = __isUltra ? 1 : 0; qlog('[RT] GodRay ' + __isUltra); } } catch (e) {}
+  // God Ray — 已废弃，永久关闭
+  try { if (godRayPass) { godRayPass.enabled = false; godRayPass.uniforms.uEnabled.value = 0; } } catch (e) {}
   // SMAA 抗锯齿
   try { if (smaaPass) { smaaPass.enabled = __isUltra; qlog('[RT] SMAA ' + __isUltra); } } catch (e) {}
   // Lensflare 镜头光晕
@@ -3826,7 +3820,7 @@ async function init() {
       console.error('[WARMUP] 预热后处理 shader...');
       if (composer) {
         const __passes = [renderPass, bloomPass, ssaoPass, outputPass, colorGradePass,
-                          bokehPass, afterimagePass, ssrPass, gtaoPass, godRayPass, smaaPass];
+                          bokehPass, afterimagePass, gtaoPass, smaaPass];
         const __orig = new Map();
         for (const p of __passes) {
           if (p && p.enabled !== undefined) {
