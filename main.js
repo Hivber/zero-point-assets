@@ -3723,12 +3723,12 @@ async function init() {
   try { window.__ZP_BOOT_STAGE__ = 'finalize'; } catch (e) {}
   // ===== Shader 预热：提前编译所有材质的 shader =====
   try {
-    console.log('[WARMUP] 开始编译 shader...');
+    console.error('[WARMUP] 开始编译 shader...');
     const __t0 = performance.now();
     renderer.compile(scene, camera);
-    console.log('[WARMUP] shader 编译完成，耗时 ' + (performance.now() - __t0).toFixed(0) + 'ms');
+    console.error('[WARMUP] shader 编译完成，耗时 ' + (performance.now() - __t0).toFixed(0) + 'ms');
   } catch (e) {
-    console.warn('[WARMUP] 失败:', e);
+    console.error('[WARMUP] 失败:', e);
   }
   setLoading(100, '就绪');
   clock = new THREE.Clock();
@@ -3759,7 +3759,7 @@ async function init() {
     // ===== 后处理 shader 预热（loading 消失前）=====
     try {
       const __t0 = performance.now();
-      console.log('[WARMUP] 预热后处理 shader...');
+      console.error('[WARMUP] 预热后处理 shader...');
       if (composer) {
         const __passes = [renderPass, bloomPass, ssaoPass, outputPass, colorGradePass,
                           bokehPass, afterimagePass, ssrPass, gtaoPass, godRayPass, smaaPass];
@@ -3770,11 +3770,11 @@ async function init() {
             p.enabled = true;
           }
         }
-        try { composer.render(); } catch (e) { console.warn('[WARMUP] render 失败', e); }
+        try { composer.render(); } catch (e) { console.error('[WARMUP] render 失败', e); }
         for (const [p, en] of __orig) p.enabled = en;
       }
-      console.log('[WARMUP] 完成 ' + (performance.now() - __t0).toFixed(0) + 'ms');
-    } catch (e) { console.warn('[WARMUP] 异常', e); }
+      console.error('[WARMUP] 完成 ' + (performance.now() - __t0).toFixed(0) + 'ms');
+    } catch (e) { console.error('[WARMUP] 异常', e); }
 
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('menu').classList.remove('hidden');
