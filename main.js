@@ -2,6 +2,14 @@
    零点行动 · 联机版 main.js — v33（稳定联机模块化）
    ============================================================ */
 
+/* [KNOWN ISSUE · 2026-09-30]
+   ultraHi 顶尖画质黑屏，未修。
+   原因未定，方向：后处理管线配置错误（非性能问题）。
+   已确认：WebGL 到 96 pass 才掉帧，ultraHi 只用 20 个 pass，余量充足。
+   待玩家反馈后再排查。
+   排查工具建议：逐个禁用 pass 二分法定位。
+*/
+
 /* ==================== [A] 依赖与全局 ==================== */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -17,7 +25,6 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
@@ -542,7 +549,6 @@ function applyUltraLowMode(on) {
   try { for (const t of quiverTrees) if (t) t.visible = !hide; } catch (e) {}
   try { for (const n of decorativeC4Nodes) if (n) n.visible = !hide; } catch (e) {}
   try { for (const p of pickups) if (p && p.mesh) p.mesh.visible = !hide; } catch (e) {}
-  try { for (const c of corpses) if (c && c.mesh) c.mesh.visible = !hide; } catch (e) {}
   try { console.error('[ULTRA-LOW] ' + (hide ? 'ON' : 'OFF')); } catch (e) {}
 }
 
@@ -1025,8 +1031,6 @@ let vintageRadioPrototype = null;
 let pendingVintageRadioPositions = null;
 const vintageRadios = [];
 const decorativeC4Nodes = [];
-const corpses = [];
-const CORPSE_LIFETIME_MS = 30000;
 
 const colliders = [];
 const impacts = [];
@@ -2470,17 +2474,6 @@ function handleServerMsg(msg) {
   }
   if (msg.type === 'unstuck_ok') {
     if (![msg.x, msg.y, msg.z].every(Number.isFinite)) return;
-    // 脱困也算死亡：在当前（死亡前）位置生成尸体
-    try {
-      const __now = performance.now();
-      if (playerVRM && playerVRM.scene && (!player._lastSelfCorpseAt || __now - player._lastSelfCorpseAt > 2000)) {
-        player._lastSelfCorpseAt = __now;
-        spawnCorpse(playerVRM, player.pos.x, player.pos.y, player.pos.z, player.yaw);
-        console.log('[CORPSE] unstuck 路径生成尸体');
-      } else {
-        console.log('[CORPSE] unstuck 路径跳过: playerVRM=' + !!playerVRM + ' 冷却=' + (__now - (player._lastSelfCorpseAt||0)).toFixed(0));
-      }
-    } catch (e) { console.warn('[CORPSE] unstuck 路径异常', e); }
     player.pos.set(Number(msg.x), Number(msg.y), Number(msg.z));
     player.vy = 0;
     player.onGround = false;
@@ -2707,15 +2700,6 @@ function handleServerMsg(msg) {
       op.targetYaw = __tgt.yaw;
       op.visible = p.alive;
       op.group.visible = p.alive;
-      // 尸体系统：检测 alive true->false
-      const wasAlive = op._wasAlive !== false;
-      if (wasAlive && p.alive === false && op.vrm) {
-        const deathX = Number.isFinite(p.x) ? p.x : (op.targetPos ? op.targetPos.x : 0);
-        const deathY = Number.isFinite(p.y) ? p.y : (op.targetPos ? op.targetPos.y : 0);
-        const deathZ = Number.isFinite(p.z) ? p.z : (op.targetPos ? op.targetPos.z : 0);
-        spawnCorpse(op.vrm, deathX, deathY, deathZ, p.yaw || 0);
-      }
-      op._wasAlive = !!p.alive;
       op.weapon = p.weapon;
       op.crouching = !!p.crouching;
       op.hp = p.hp;
@@ -2814,13 +2798,6 @@ function handleServerMsg(msg) {
       try { KillIcon.flash(); } catch (e) {}
     }
     if (msg.victim === myId) {
-      console.log('[CORPSE] killed 收到 victim=me playerVRM=' + !!playerVRM + ' 位置=(' + player.pos.x.toFixed(1) + ',' + player.pos.y.toFixed(1) + ',' + player.pos.z.toFixed(1) + ')');
-      // 自己的尸体（不依赖 state.alive，避免 snapshot 先到导致跳过）
-      const __now = performance.now();
-      if (playerVRM && playerVRM.scene && (!player._lastSelfCorpseAt || __now - player._lastSelfCorpseAt > 3000)) {
-        player._lastSelfCorpseAt = __now;
-        spawnCorpse(playerVRM, player.pos.x, player.pos.y, player.pos.z, player.yaw);
-      }
       state.deathCount++;
       state.hp = 0;
       state.alive = false;
@@ -3165,45 +3142,6 @@ function createOtherPlayer(id) {
   return op;
 }
 
-const __zpSelfCorpse = true;
-function spawnCorpse(vrm, x, y, z, yaw) {
-  console.log('[CORPSE] spawnCorpse 被调用 vrm=' + !!vrm + ' scene=' + !!(vrm && vrm.scene));
-  if (!vrm || !vrm.scene) return;
-  let clone;
-  try {
-    clone = SkeletonUtils.clone(vrm.scene);
-  } catch (e) {
-    console.warn('[CORPSE] clone 失败', e);
-    return;
-  }
-  let __meshCount = 0;
-  clone.traverse(o => {
-    if (o.isMesh) {
-      __meshCount++;
-      o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
-      if (o.material) {
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        // 强制克隆材质并清空所有 clippingPlanes（无论当前是不是空）
-        const newMats = mats.map(m => {
-          if (!m) return m;
-          const c = m.clone();
-          c.clippingPlanes = [];
-          c.clipShadows = false;
-          c.needsUpdate = true;
-          return c;
-        });
-        o.material = Array.isArray(o.material) ? newMats : newMats[0];
-      }
-    }
-  });
-  console.log('[CORPSE] spawnCorpse mesh数=' + __meshCount + ' 位置=(' + x.toFixed(2) + ',' + y.toFixed(2) + ',' + z.toFixed(2) + ')');
-  clone.position.set(x, y + 0.25, z);
-  clone.rotation.set(-Math.PI / 2, yaw, 0);
-  scene.add(clone);
-  corpses.push({ mesh: clone, bornAt: performance.now() });
-  console.log('[CORPSE] 生成，当前尸体数 ' + corpses.length);
-}
-
 function updateExplosionLights() {
   const now = performance.now();
   for (let i = explosionLights.length - 1; i >= 0; i--) {
@@ -3215,17 +3153,6 @@ function updateExplosionLights() {
       explosionLights.splice(i, 1);
     } else {
       e.light.intensity = 8.0 * (1 - age / 0.5);
-    }
-  }
-}
-
-function updateCorpses() {
-  const now = performance.now();
-  for (let i = corpses.length - 1; i >= 0; i--) {
-    const c = corpses[i];
-    if (now - c.bornAt >= CORPSE_LIFETIME_MS) {
-      scene.remove(c.mesh);
-      corpses.splice(i, 1);
     }
   }
 }
@@ -3311,7 +3238,6 @@ function updateDistanceCull() {
   _cullArr(barrels, px, pz, farSq);
   _cullArr(quiverTrees, px, pz, farSq);
   _cullArr(decorativeC4Nodes, px, pz, farSq);
-  _cullArr(corpses, px, pz, farSq);
 }
 /* ==================== [ZCULL END] ==================== */
 
@@ -8732,7 +8658,6 @@ function loop() {
     updateOtherPlayers(dt);
     updateDistanceCull();
     updateExplosionLights();
-    updateCorpses();
     updateLocalBullets(dt);
     updateImpacts(dt);
     updatePickups(dt);
