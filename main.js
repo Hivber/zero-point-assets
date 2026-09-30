@@ -26,6 +26,7 @@ import {
 /* ==== [ZP-MIC-DISABLE-BEGIN] ==== */
 (function zpDisableMic() {
   var TOAST_TEXT = '语音功能维护中，请稍后再试';
+
   function showToast(text) {
     var t = document.getElementById('zp-mic-toast');
     if (!t) {
@@ -39,55 +40,79 @@ import {
     clearTimeout(t._hideTimer);
     t._hideTimer = setTimeout(function () { t.style.opacity = '0'; }, 1800);
   }
-  function isMicButton(el) {
-    if (!el || el.nodeType !== 1) return false;
-    var id = (el.id || '').toLowerCase();
-    var cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
-    var aria = (el.getAttribute && (el.getAttribute('aria-label') || '')).toLowerCase();
-    var title = (el.getAttribute && (el.getAttribute('title') || '')).toLowerCase();
-    var da = (el.getAttribute && (el.getAttribute('data-action') || '')).toLowerCase();
-    var text = (el.textContent || '').trim();
-    var h = [id, cls, aria, title, da].join(' ');
-    if (/(^|[-_ ])mic([-_ ]|$|btn|button|panel)|麦克风|voicechat|voice-btn|voicebtn/i.test(h)) return true;
-    if (da === 'mic' || da === 'voice') return true;
-    if (text.length <= 8 && /麦克风|语音/.test(text) && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button')) return true;
-    return false;
+
+  // ===== 核心拦截：干掉 getUserMedia 的 audio 请求 =====
+  function patchGUM() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+    if (navigator.mediaDevices._zpPatched) return true;
+    var _orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function (constraints) {
+      var c = constraints || {};
+      var wantAudio = !!c.audio;
+      var wantVideo = !!c.video;
+      if (wantAudio) {
+        try { showToast(TOAST_TEXT); } catch (e) {}
+        console.log('[ZP] getUserMedia audio 请求已被拦截');
+        return Promise.reject(new DOMException('Microphone disabled for maintenance', 'NotAllowedError'));
+      }
+      return _orig(constraints);
+    };
+    navigator.mediaDevices._zpPatched = true;
+    console.log('[ZP] getUserMedia 已打补丁');
+    return true;
   }
-  function grayOut(el) {
-    if (el._zpMicDisabled) return;
-    el._zpMicDisabled = true;
+
+  // ===== micBtn 变灰 + 点击拦截 =====
+  function grayMic() {
+    var el = document.getElementById('micBtn');
+    if (!el) return;
+    if (el._zpGray) return;
+    el._zpGray = true;
     el.style.opacity = '0.35';
     el.style.filter = 'grayscale(1)';
     el.style.cursor = 'not-allowed';
     el.setAttribute('aria-disabled', 'true');
     if (el.classList) el.classList.remove('active', 'on', 'enabled');
   }
+
+  function isMicBtn(el) {
+    if (!el) return false;
+    if (el.id === 'micBtn') return true;
+    if (el.closest && el.closest('#micBtn')) return true;
+    return false;
+  }
+
   function blockHandler(e) {
-    var el = e.target && e.target.closest ? e.target.closest('button, [role="button"], a, [class*="btn"]') : null;
-    if (!el) return;
-    if (isMicButton(el)) {
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-      e.preventDefault();
-      showToast(TOAST_TEXT);
-    }
+    if (!isMicBtn(e.target)) return;
+    e.stopImmediatePropagation();
+    e.stopPropagation();
+    e.preventDefault();
+    showToast(TOAST_TEXT);
   }
   document.addEventListener('click', blockHandler, true);
   document.addEventListener('touchstart', blockHandler, { capture: true, passive: false });
   document.addEventListener('mousedown', blockHandler, true);
-  function scan() {
-    document.querySelectorAll('button, [role="button"], [class*="mic"], [class*="voice"]').forEach(function (el) {
-      if (isMicButton(el)) grayOut(el);
-    });
+  document.addEventListener('pointerdown', blockHandler, true);
+
+  // ===== 循环：补丁 + 变灰 + 关面板 =====
+  function tick() {
+    patchGUM();
+    grayMic();
   }
+
   function start() {
-    scan();
-    var mo = new MutationObserver(function () { scan(); });
-    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-label'] });
+    tick();
+    setInterval(tick, 500);
+    var mo = new MutationObserver(tick);
+    mo.observe(document.body, { childList: true, subtree: true });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
-  console.log('[ZP] 麦克风功能已临时禁用（前端拦截）');
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+  console.log('[ZP] 麦克风功能已临时禁用（getUserMedia 拦截 + micBtn 变灰）');
 })();
 /* ==== [ZP-MIC-DISABLE-END] ==== */
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
