@@ -898,6 +898,13 @@ try {
   }
 } catch (e) {}
 
+
+/* [ZP-AMMO] 物理引擎全局变量 */
+let Ammo = null;
+let physicsWorld = null;
+let playerBody = null;
+const PHYSICS_GRAVITY = -22;
+
 const VRM_YAW_OFFSET = 0;
 
 
@@ -1554,6 +1561,60 @@ const localBullets = [];
 const minimapWalls = [];
 let minimapCanvas = null, minimapCtx = null;
 const MINIMAP_RANGE = 45;
+
+/* [ZP-AMMO-HELPERS] */
+let _zpTransCache = null;
+function _zpEnsureTrans() {
+  if (!_zpTransCache && Ammo) _zpTransCache = new Ammo.btTransform();
+  return _zpTransCache;
+}
+function zpGetBodyPos(body) {
+  if (!body) return { x: 0, y: 0, z: 0 };
+  const t = _zpEnsureTrans();
+  body.getMotionState().getWorldTransform(t);
+  const o = t.getOrigin();
+  return { x: o.x(), y: o.y(), z: o.z() };
+}
+function zpSetBodyVel(body, x, y, z) {
+  if (!body || !Ammo) return;
+  const v = new Ammo.btVector3(x, y, z);
+  body.setLinearVelocity(v);
+  Ammo.destroy(v);
+}
+function zpSetBodyPos(body, x, y, z) {
+  if (!body || !Ammo) return;
+  const t = _zpEnsureTrans();
+  t.setIdentity();
+  t.getOrigin().setValue(x, y, z);
+  body.setWorldTransform(t);
+  const ms = body.getMotionState();
+  if (ms) ms.setWorldTransform(t);
+  zpSetBodyVel(body, 0, 0, 0);
+}
+function zpGetBodyVel(body) {
+  if (!body) return { x: 0, y: 0, z: 0 };
+  const v = body.getLinearVelocity();
+  return { x: v.x(), y: v.y(), z: v.z() };
+}
+function zpAddStaticBox(x, y, z, w, h, d) {
+  if (!physicsWorld || !Ammo) return null;
+  try {
+    const shape = new Ammo.btBoxShape(new Ammo.btVector3(w/2, h/2, d/2));
+    const trans = new Ammo.btTransform();
+    trans.setIdentity();
+    trans.setOrigin(new Ammo.btVector3(x, y, z));
+    const motion = new Ammo.btDefaultMotionState(trans);
+    const inertia = new Ammo.btVector3(0, 0, 0);
+    const info = new Ammo.btRigidBodyConstructionInfo(0, motion, shape, inertia);
+    const body = new Ammo.btRigidBody(info);
+    physicsWorld.addRigidBody(body);
+    return body;
+  } catch (e) {
+    console.error('[PHYSICS] zpAddStaticBox 失败', e);
+    return null;
+  }
+}
+
 
 const player = {
   pos: new THREE.Vector3(0, 0, 45),
@@ -2265,6 +2326,7 @@ function openSocket(resetCandidates = false) {
         }
         if (Array.isArray(msg.spawn)) {
           player.pos.set(msg.spawn[0], msg.spawn[1], msg.spawn[2]);
+      if (playerBody) zpSetBodyPos(playerBody, player.pos.x, player.pos.y + player.height / 2, player.pos.z);
           player.vy = 0;
           player.onGround = true;
         }
@@ -2442,6 +2504,7 @@ function handleServerMsg(msg) {
     const sp = msg.spawn;
     if (Array.isArray(sp) && sp.length >= 3 && sp.slice(0, 3).every(Number.isFinite)) {
       player.pos.set(sp[0], sp[1], sp[2]);
+      if (playerBody) zpSetBodyPos(playerBody, player.pos.x, player.pos.y + player.height / 2, player.pos.z);
       player.vy = 0;
       player.onGround = false;
       player._jumping = false;
@@ -2505,6 +2568,7 @@ function handleServerMsg(msg) {
       const sp = msg.data.spawn;
       if (sp.length >= 3 && sp.slice(0, 3).every(Number.isFinite)) {
         player.pos.set(sp[0], sp[1], sp[2]);
+      if (playerBody) zpSetBodyPos(playerBody, player.pos.x, player.pos.y + player.height / 2, player.pos.z);
         player.vy = 0;
         player.onGround = false;
         player._jumping = false;
@@ -2594,6 +2658,7 @@ function handleServerMsg(msg) {
           if (false) {  // POS-SYNC 临时关闭
             console.log('[POS-SYNC] 强制纠正 dist=' + dist.toFixed(2) + ' ->(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ',' + p.z.toFixed(1) + ')');
             player.pos.set(p.x, p.y, p.z);
+      if (playerBody) zpSetBodyPos(playerBody, player.pos.x, player.pos.y + player.height / 2, player.pos.z);
             player.vy = 0;
             player.onGround = false;
             player._jumping = false;
@@ -3737,6 +3802,49 @@ async function init() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
   camera.rotation.order = 'YXZ';
   scene.add(camera);
+
+  /* [ZP-AMMO] 加载 Ammo 并初始化物理世界 */
+  try {
+    Ammo = await Promise.race([
+      Promise.resolve(window.Ammo()),
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error('Ammo 8s timeout')); }, 8000); })
+    ]);
+    window.__ZP_AMMO__ = Ammo;
+    console.log('[PHYSICS] Ammo 已加载');
+  } catch (e) {
+    console.error('[PHYSICS] Ammo 加载失败', e);
+    const st = document.getElementById('loadingStatus');
+    if (st) st.textContent = '物理引擎加载失败，请检查网络';
+    Ammo = null;
+    physicsWorld = null;
+    playerBody = null;
+    console.log('[PHYSICS] 已降级到 AABB 碰撞');
+  }
+  (function initAmmoWorld() {
+    if (!Ammo) { console.log('[PHYSICS] Ammo 未加载，跳过'); return; }
+    const cfg = new Ammo.btDefaultCollisionConfiguration();
+    const disp = new Ammo.btCollisionDispatcher(cfg);
+    const bphase = new Ammo.btDbvtBroadphase();
+    const solver = new Ammo.btSequentialImpulseConstraintSolver();
+    physicsWorld = new Ammo.btDiscreteDynamicsWorld(disp, bphase, solver, cfg);
+    physicsWorld.setGravity(new Ammo.btVector3(0, PHYSICS_GRAVITY, 0));
+    const pShape = new Ammo.btBoxShape(new Ammo.btVector3(player.radius, player.height / 2, player.radius));
+    const pTrans = new Ammo.btTransform();
+    pTrans.setIdentity();
+    pTrans.setOrigin(new Ammo.btVector3(player.pos.x, player.pos.y + player.height / 2, player.pos.z));
+    const pMotion = new Ammo.btDefaultMotionState(pTrans);
+    const pInertia = new Ammo.btVector3(0, 0, 0);
+    pShape.calculateLocalInertia(1, pInertia);
+    const pInfo = new Ammo.btRigidBodyConstructionInfo(1, pMotion, pShape, pInertia);
+    playerBody = new Ammo.btRigidBody(pInfo);
+    playerBody.setAngularFactor(new Ammo.btVector3(0, 0, 0));
+    playerBody.setFriction(0);
+    playerBody.setRestitution(0);
+    playerBody.setActivationState(4);
+    physicsWorld.addRigidBody(playerBody);
+    console.log('[PHYSICS] 物理世界 + 玩家体已创建 (Ammo)');
+  })();
+
 
   // ===== 修复：setupPostProcessing 必须在 scene/camera 创建之后调用 =====
   const __zpFixPostOrder = true;
@@ -4945,6 +5053,7 @@ function addBox(mat, x, y, z, w, h, d, collide = true) {
       max: new THREE.Vector3(x + w/2, y + h/2, z + d/2),
     });
     minimapWalls.push({ x, z, w, d });
+    zpAddStaticBox(x, y, z, w, h, d);
   }
   return mesh;
 }
@@ -4976,6 +5085,10 @@ function buildFromServerMap(mapData, tex) {
   ground.receiveShadow = true;
   scene.add(ground);
 
+  /* [ZP-AMMO-GROUND] 地面物理体（薄板） */
+  zpAddStaticBox(0, -0.5, 0, gs, 1, gs);
+  console.log('[PHYSICS] 地面物理体已加入 (Ammo), size=' + gs);
+
   const __zpFixSun = true;
   scene.add(new THREE.HemisphereLight(0xf5e0b0, 0x605040, 0.45));
   const sun = new THREE.DirectionalLight(0xffe0b0, 0.85);
@@ -5003,6 +5116,11 @@ function buildFromServerMap(mapData, tex) {
       max: new THREE.Vector3(b.x + b.w/2, b.y + b.h/2, b.z + b.d/2),
     });
     minimapWalls.push({ x: b.x, z: b.z, w: b.w, d: b.d });
+    zpAddStaticBox(b.x, b.y, b.z, b.w, b.h, b.d);
+
+  }
+  if (typeof physicsWorld !== 'undefined' && physicsWorld) {
+    console.log('[PHYSICS] 地图盒子加入物理世界: ' + mapData.boxes.length + ' 个');
   }
 
   const _unitBox = new THREE.BoxGeometry(1, 1, 1);
@@ -5092,72 +5210,65 @@ function resolveVertical(prevY) {
 }
 
 function updatePlayer(dt) {
-  if (state.orbit) {
-    // 观赏模式下禁止移动
-    player.moving = false;
-    return;
-  }
-  if (state.alive && player.pos.y < -8) {
-    state.alive = false;
-    updateViewModelVisible();
-  }
   if (!state.alive) {
     player.moving = false;
+    if (playerBody) zpSetBodyVel(playerBody, 0, zpGetBodyVel(playerBody).y, 0);
     return;
   }
-  if (state.dancing) {
-    let dfx = 0, dfz = 0;
-    if (isActionDown('forward')) dfz += 1;
-    if (isActionDown('back')) dfz -= 1;
-    if (isActionDown('left')) dfx -= 1;
-    if (isActionDown('right')) dfx += 1;
-    dfx += touch.moveX;
-    dfz -= touch.moveY;
-    if (Math.hypot(dfx, dfz) > 0.1) {
-      stopDance();
-    } else {
-      player.moving = false;
-      const prevY = player.pos.y;
-      player.vy -= GRAVITY * dt;
-      player.pos.y += player.vy * dt;
-      resolveVertical(prevY);
-      return;
-    }
-  }
   let fx = 0, fz = 0;
-  if (isActionDown('forward')) fz += 1;
-  if (isActionDown('back')) fz -= 1;
-  if (isActionDown('left')) fx -= 1;
-  if (isActionDown('right')) fx += 1;
+  if (keys['KeyW']) fz += 1;
+  if (keys['KeyS']) fz -= 1;
+  if (keys['KeyA']) fx -= 1;
+  if (keys['KeyD']) fx += 1;
   fx += touch.moveX;
   fz -= touch.moveY;
   const len = Math.hypot(fx, fz);
   if (len > 1) { fx /= len; fz /= len; }
-  _zpTV1.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  _zpTV2.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-  _zpTV3.set(0, 0, 0);
-  _zpTV3.addScaledVector(_zpTV1, fz);
-  _zpTV3.addScaledVector(_zpTV2, fx);
-  const moveSpeed = player.crouching ? CROUCH_PLAYER_SPEED : player.speed;
-  tryMovePlayer(_zpTV3.x * moveSpeed * dt, 0);
-  tryMovePlayer(0, _zpTV3.z * moveSpeed * dt);
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const move = new THREE.Vector3();
+  move.addScaledVector(forward, fz);
+  move.addScaledVector(right, fx);
   player.moving = len > 0.05;
-  const prevY = player.pos.y;
-  player.vy -= GRAVITY * dt;
-  player.pos.y += player.vy * dt;
-  resolveVertical(prevY);
+
+  if (!physicsWorld || !playerBody) {
+    // fallback: 老逻辑
+    tryMovePlayer(move.x * player.speed * dt, 0);
+    tryMovePlayer(0, move.z * player.speed * dt);
+    const prevY = player.pos.y;
+    player.vy -= GRAVITY * dt;
+    player.pos.y += player.vy * dt;
+    resolveVertical(prevY);
+    return;
+  }
+
+  // 水平速度由我们直接设定（Ammo 只负责碰撞和重力）
+  const v = zpGetBodyVel(playerBody);
+  zpSetBodyVel(playerBody, move.x * player.speed, v.y, move.z * player.speed);
+
+  // 步进
+  physicsWorld.stepSimulation(dt, 3, 1 / 60);
+
+  // 读回位置
+  const pos = zpGetBodyPos(playerBody);
+  player.pos.x = pos.x;
+  player.pos.y = pos.y - player.height / 2;
+  player.pos.z = pos.z;
+  const v2 = zpGetBodyVel(playerBody);
+  player.vy = v2.y;
+  player.onGround = Math.abs(v2.y) < 0.3;
 }
+
 function jump() {
-  if (!state.alive || !player.onGround) return;
-  if (state.dancing) stopDance();
-  if (state.crouching && !setCrouch(false)) return;
+  if (!state.alive || !playerBody) return;
+  const now = performance.now();
+  if (now - (player._lastJumpAt || 0) < 120) return;
+  const v = zpGetBodyVel(playerBody);
+  if (Math.abs(v.y) > 0.5) return;  // 空中不跳
+  player._lastJumpAt = now;
+  zpSetBodyVel(playerBody, v.x, JUMP_VELOCITY, v.z);
   player.vy = JUMP_VELOCITY;
   player.onGround = false;
-  player._jumping = true;
-  if (state.thirdPerson && playerVRM) {
-    setVRMAnimation(playerVRM, 'jump', PHYSICS_JUMP_DURATION);
-  }
-  sendMsg({ type: 'action', action: 'jump' });
 }
 
 /* ==================== [F] 相机 ==================== */
