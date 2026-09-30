@@ -22,99 +22,6 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
-
-/* ==== [ZP-MIC-DISABLE-BEGIN] ==== */
-(function zpDisableMic() {
-  var TOAST_TEXT = '语音功能维护中，请稍后再试';
-
-  function showToast(text) {
-    var t = document.getElementById('zp-mic-toast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'zp-mic-toast';
-      t.style.cssText = 'position:fixed;left:50%;bottom:140px;transform:translateX(-50%);background:rgba(18,20,24,0.85);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;letter-spacing:1px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.25s ease';
-      document.body.appendChild(t);
-    }
-    t.textContent = text;
-    t.style.opacity = '1';
-    clearTimeout(t._hideTimer);
-    t._hideTimer = setTimeout(function () { t.style.opacity = '0'; }, 1800);
-  }
-
-  // ===== 核心拦截：干掉 getUserMedia 的 audio 请求 =====
-  function patchGUM() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
-    if (navigator.mediaDevices._zpPatched) return true;
-    var _orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = function (constraints) {
-      var c = constraints || {};
-      var wantAudio = !!c.audio;
-      var wantVideo = !!c.video;
-      if (wantAudio) {
-        try { showToast(TOAST_TEXT); } catch (e) {}
-        console.log('[ZP] getUserMedia audio 请求已被拦截');
-        return Promise.reject(new DOMException('Microphone disabled for maintenance', 'NotAllowedError'));
-      }
-      return _orig(constraints);
-    };
-    navigator.mediaDevices._zpPatched = true;
-    console.log('[ZP] getUserMedia 已打补丁');
-    return true;
-  }
-
-  // ===== micBtn 变灰 + 点击拦截 =====
-  function grayMic() {
-    var el = document.getElementById('micBtn');
-    if (!el) return;
-    if (el._zpGray) return;
-    el._zpGray = true;
-    el.style.opacity = '0.35';
-    el.style.filter = 'grayscale(1)';
-    el.style.cursor = 'not-allowed';
-    el.setAttribute('aria-disabled', 'true');
-    if (el.classList) el.classList.remove('active', 'on', 'enabled');
-  }
-
-  function isMicBtn(el) {
-    if (!el) return false;
-    if (el.id === 'micBtn') return true;
-    if (el.closest && el.closest('#micBtn')) return true;
-    return false;
-  }
-
-  function blockHandler(e) {
-    if (!isMicBtn(e.target)) return;
-    e.stopImmediatePropagation();
-    e.stopPropagation();
-    e.preventDefault();
-    showToast(TOAST_TEXT);
-  }
-  document.addEventListener('click', blockHandler, true);
-  document.addEventListener('touchstart', blockHandler, { capture: true, passive: false });
-  document.addEventListener('mousedown', blockHandler, true);
-  document.addEventListener('pointerdown', blockHandler, true);
-
-  // ===== 循环：补丁 + 变灰 + 关面板 =====
-  function tick() {
-    patchGUM();
-    grayMic();
-  }
-
-  function start() {
-    tick();
-    setInterval(tick, 500);
-    var mo = new MutationObserver(tick);
-    mo.observe(document.body, { childList: true, subtree: true });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
-  } else {
-    start();
-  }
-  console.log('[ZP] 麦克风功能已临时禁用（getUserMedia 拦截 + micBtn 变灰）');
-})();
-/* ==== [ZP-MIC-DISABLE-END] ==== */
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
   encryptMsg, decryptMsg,
 } from './models/client-infra.js';
@@ -5160,25 +5067,28 @@ function tryMovePlayer(dx, dz) {
   if (!aabbHit(player.pos.x, player.pos.y, nz, player.radius, player.height)) player.pos.z = nz;
 }
 function resolveVertical(prevY) {
-  const wasJumping = player._jumping;
+  // [ZP-CEILING-FIX] 增加头顶碰撞检测，修复从下方穿地板的问题
   const r = player.radius, x = player.pos.x, z = player.pos.z, y = player.pos.y;
+  const h = player.height;
+  const top = y + h;
+  const prevTop = prevY + h;
   let ground = 0;
+  let ceiling = Infinity;
   for (const c of colliders) {
     if (!(x + r > c.min.x && x - r < c.max.x && z + r > c.min.z && z - r < c.max.z)) continue;
+    // 向下：撞到方块顶面（落地）
     if (prevY >= c.max.y - 0.01 && y <= c.max.y && c.max.y > ground) ground = c.max.y;
+    // 向上：撞到方块底面（撞头）
+    if (prevTop <= c.min.y + 0.01 && top > c.min.y && c.min.y < ceiling) ceiling = c.min.y;
   }
   if (y <= ground) {
-    player.pos.y = ground;
-    player.vy = 0;
-    player.onGround = true;
+    player.pos.y = ground; player.vy = 0; player.onGround = true;
+  } else if (top >= ceiling) {
+    player.pos.y = ceiling - h; player.vy = 0; player.onGround = false;
   } else {
     player.onGround = false;
   }
   snapPlayerToTerrain();
-  if (player.onGround && wasJumping) {
-    player._jumping = false;
-    sendMsg({ type: 'action', action: 'land' });
-  }
 }
 
 function updatePlayer(dt) {
