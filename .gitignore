@@ -1,0 +1,56 @@
+# ===== 备份 / 临时文件 =====
+*.bak
+*.bak.*
+*.before-*
+*.orig
+*.rej
+*.swp
+*~
+main.js.bak*
+main.js.before-*
+main.js.[0-9]*
+login.js.*
+index.html.bak*
+index.html.before-*
+index.html.[0-9]*
+login.html.bak*
+login.html.pre-*
+*.tunnel-test
+
+# ===== 开发脚本 / 文档（不进 public） =====
+arc-inject.user.js
+auth-client.js
+fix_*.js
+check_*.py
+check-result.txt
+
+# ===== 地图源数据 =====
+*.world.json
+factory.json
+*.zpw
+!maps/*.zpw
+
+# ===== 文档 =====
+ZEROPOINT-API.md
+README-*.txt
+README_*.md
+HIGH-LATENCY-CHANGELOG.md
+VERSION.txt
+
+# ===== 测试 HTML =====
+*-test.html
+*-editor.html
+mic-*.html
+webgpu-*.html
+webgl-test.html
+vrm-*-test.html
+vrm-*-dump.html
+real-scene.html
+dancetest.html
+33.html
+
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

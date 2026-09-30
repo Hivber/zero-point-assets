@@ -22,6 +22,74 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
+
+/* ==== [ZP-MIC-DISABLE-BEGIN] ==== */
+(function zpDisableMic() {
+  var TOAST_TEXT = '语音功能维护中，请稍后再试';
+  function showToast(text) {
+    var t = document.getElementById('zp-mic-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'zp-mic-toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:140px;transform:translateX(-50%);background:rgba(18,20,24,0.85);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;letter-spacing:1px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.25s ease';
+      document.body.appendChild(t);
+    }
+    t.textContent = text;
+    t.style.opacity = '1';
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(function () { t.style.opacity = '0'; }, 1800);
+  }
+  function isMicButton(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var id = (el.id || '').toLowerCase();
+    var cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    var aria = (el.getAttribute && (el.getAttribute('aria-label') || '')).toLowerCase();
+    var title = (el.getAttribute && (el.getAttribute('title') || '')).toLowerCase();
+    var da = (el.getAttribute && (el.getAttribute('data-action') || '')).toLowerCase();
+    var text = (el.textContent || '').trim();
+    var h = [id, cls, aria, title, da].join(' ');
+    if (/(^|[-_ ])mic([-_ ]|$|btn|button|panel)|麦克风|voicechat|voice-btn|voicebtn/i.test(h)) return true;
+    if (da === 'mic' || da === 'voice') return true;
+    if (text.length <= 8 && /麦克风|语音/.test(text) && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button')) return true;
+    return false;
+  }
+  function grayOut(el) {
+    if (el._zpMicDisabled) return;
+    el._zpMicDisabled = true;
+    el.style.opacity = '0.35';
+    el.style.filter = 'grayscale(1)';
+    el.style.cursor = 'not-allowed';
+    el.setAttribute('aria-disabled', 'true');
+    if (el.classList) el.classList.remove('active', 'on', 'enabled');
+  }
+  function blockHandler(e) {
+    var el = e.target && e.target.closest ? e.target.closest('button, [role="button"], a, [class*="btn"]') : null;
+    if (!el) return;
+    if (isMicButton(el)) {
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      e.preventDefault();
+      showToast(TOAST_TEXT);
+    }
+  }
+  document.addEventListener('click', blockHandler, true);
+  document.addEventListener('touchstart', blockHandler, { capture: true, passive: false });
+  document.addEventListener('mousedown', blockHandler, true);
+  function scan() {
+    document.querySelectorAll('button, [role="button"], [class*="mic"], [class*="voice"]').forEach(function (el) {
+      if (isMicButton(el)) grayOut(el);
+    });
+  }
+  function start() {
+    scan();
+    var mo = new MutationObserver(function () { scan(); });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-label'] });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+  console.log('[ZP] 麦克风功能已临时禁用（前端拦截）');
+})();
+/* ==== [ZP-MIC-DISABLE-END] ==== */
   createRequestId, fetchRuntimeConfig, fetchNotices, fetchActivities, fetchMailbox, claimMail, claimReward, reportClientError,
   encryptMsg, decryptMsg,
 } from './models/client-infra.js';
